@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { Link2, TriangleAlert } from "lucide-react";
 import {
   addMemberAction,
@@ -12,7 +12,7 @@ import {
   revokeInviteAction,
 } from "@/app/actions/teams";
 import type { TeamRole } from "@/lib/teams";
-import { buttonClass, cn, Field, FormMessage, inputClass } from "@/components/ui";
+import { buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
 import { Command, ConfirmSubmit, SubmitButton } from "@/components/client-ui";
 
 const ROLE_LABEL: Record<TeamRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
@@ -40,23 +40,20 @@ export function MemberRow({ teamId, member, myRole }: { teamId: string; member: 
       <div className="flex items-center gap-2">
         {manageable && !member.self ? (
           <>
-            <form action={roleAction} className="flex items-center gap-1.5">
-              <input type="hidden" name="team_id" value={teamId} />
-              <input type="hidden" name="user_id" value={member.id} />
-              <select
-                name="role"
-                defaultValue={member.role}
-                aria-label={`Role of ${member.email}`}
-                onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                className={cn(inputClass.replace("w-full", ""), "h-7 w-auto py-0 text-[12.5px]")}
-              >
-                {roles.map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABEL[r]}
-                  </option>
-                ))}
-              </select>
-            </form>
+            <Select
+              defaultValue={member.role}
+              aria-label={`Role of ${member.email}`}
+              onValueChange={(role) => {
+                // Save right away, like the old auto-submitting form.
+                const fd = new FormData();
+                fd.set("team_id", teamId);
+                fd.set("user_id", member.id);
+                fd.set("role", role);
+                startTransition(() => roleAction(fd));
+              }}
+              className="h-7 w-auto min-w-24 py-0 text-[12.5px]"
+              options={roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
+            />
             <form action={removeAction}>
               <input type="hidden" name="team_id" value={teamId} />
               <input type="hidden" name="user_id" value={member.id} />
@@ -77,11 +74,17 @@ export function MemberRow({ teamId, member, myRole }: { teamId: string; member: 
 
 function RoleSelect({ name, owner, id }: { name: string; owner: boolean; id: string }) {
   return (
-    <select id={id} name={name} defaultValue="member" className={cn(inputClass, "sm:w-36")}>
-      <option value="member">Member</option>
-      <option value="admin">Admin</option>
-      {owner ? <option value="owner">Owner</option> : null}
-    </select>
+    <Select
+      id={id}
+      name={name}
+      defaultValue="member"
+      className="sm:w-36"
+      options={[
+        { value: "member", label: "Member" },
+        { value: "admin", label: "Admin" },
+        ...(owner ? [{ value: "owner", label: "Owner" }] : []),
+      ]}
+    />
   );
 }
 

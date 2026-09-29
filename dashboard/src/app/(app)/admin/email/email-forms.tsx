@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { removeSmtpAction, saveSmtpAction, sendTestEmailAction } from "@/app/actions/admin";
-import { buttonClass, cn, Field, FormMessage, inputClass } from "@/components/ui";
+import { buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
 
 type Current = {
@@ -43,23 +43,24 @@ export function SmtpForm({ current, defaultFromName }: { current: Current; defau
         htmlFor="smtp-security"
         hint="STARTTLS is the usual choice on port 587, TLS on port 465. Unencrypted only for a relay on the same host or network."
       >
-        <select
+        <Select
           id="smtp-security"
           name="security"
           value={security}
-          onChange={(e) => {
-            const v = e.target.value as typeof security;
+          onValueChange={(raw) => {
+            const v = raw as typeof security;
             setSecurity(v);
             // Suggest the port that goes with the choice when the old one was the other default.
             if (v === "tls" && port === "587") setPort("465");
             if (v === "starttls" && port === "465") setPort("587");
           }}
-          className={cn(inputClass, "sm:w-72")}
-        >
-          <option value="starttls">STARTTLS (upgrade the connection)</option>
-          <option value="tls">TLS from the start (SMTPS)</option>
-          <option value="none">None (unencrypted)</option>
-        </select>
+          className="sm:w-72"
+          options={[
+            { value: "starttls", label: "STARTTLS (upgrade the connection)" },
+            { value: "tls", label: "TLS from the start (SMTPS)" },
+            { value: "none", label: "None (unencrypted)" },
+          ]}
+        />
       </Field>
       <div className="grid gap-3.5 sm:grid-cols-2">
         <Field label="Username" htmlFor="smtp-user" hint="Leave empty if the server doesn't require login.">

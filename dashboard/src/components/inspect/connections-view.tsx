@@ -5,11 +5,10 @@ import { Cable, Trash2 } from "lucide-react";
 import type { ConnectionSummary } from "@/lib/connections";
 import { formatBytes, formatClock, formatDateTime, formatDuration } from "@/lib/format";
 import { useDisplayTimeZone } from "@/lib/use-hydrated";
-import { buttonClass, cn, inputClass } from "../ui";
+import { buttonClass, cn, Select } from "../ui";
 import { useLiveEvents } from "../live";
 import { clearConnectionsAction } from "@/app/actions/requests";
 
-const controlClass = inputClass.replace("w-full", "");
 
 /** TCP/TLS connections: the inspector view for raw tunnels (docs/SPEC.md "Connection records"). */
 export function ConnectionsView({
@@ -102,33 +101,23 @@ export function ConnectionsView({
   return (
     <div className="flex h-[calc(100dvh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-line bg-surface max-lg:h-[calc(100dvh-8.5rem)]">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <select
+        <Select
           aria-label="Tunnel"
           value={`c:${address}`}
-          onChange={(e) => {
-            const v = e.target.value;
+          onValueChange={(v) => {
             if (v.startsWith("c:")) setAddress(v.slice(2));
             else onSwitch(v);
           }}
-          className={cn(controlClass, "h-7.5 max-w-80 font-mono text-[12.5px]")}
-        >
-          <optgroup label="TCP / TLS connections">
-            <option value="c:">All connections</option>
-            {known.map((a) => (
-              <option key={a} value={`c:${a}`}>
-                {a}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="HTTP">
-            <option value="">All HTTP requests</option>
-            {hostnames.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+          mono
+          className="h-7.5 w-auto min-w-48 max-w-80 text-[12.5px]"
+          options={[
+            {
+              label: "TCP / TLS connections",
+              options: [{ value: "c:", label: "All connections" }, ...known.map((a) => ({ value: `c:${a}`, label: a }))],
+            },
+            { label: "HTTP", options: [{ value: "", label: "All HTTP requests" }, ...hostnames.map((h) => ({ value: h, label: h }))] },
+          ]}
+        />
         <span className="text-[12.5px] text-muted">One row per finished TCP or TLS connection.</span>
         <button
           type="button"

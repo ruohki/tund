@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { db } from "@/lib/db";
 import { timeAgo } from "@/lib/format";
-import { AuthBadge, Badge, buttonClass, cn, inputClass, Panel } from "@/components/ui";
+import { AuthBadge, Badge, buttonClass, cn, inputClass, Panel, Select } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/client-ui";
 import { adminDeleteDomainAction } from "@/app/actions/admin";
 import type { DomainRisk } from "@/lib/abuse";
@@ -66,11 +66,17 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input name="q" defaultValue={q} placeholder="Hostname or owner email" className={cn(inputClass, "h-8 pl-8")} />
         </label>
-        <select name="approval" defaultValue={approval} aria-label="Approval" className={cn(inputClass, "h-8 w-auto")}>
-          <option value="">Any approval</option>
-          <option value="pending">Pending review</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <Select
+          name="approval"
+          defaultValue={approval}
+          aria-label="Approval"
+          className="h-8 w-auto min-w-40"
+          options={[
+            { value: "", label: "Any approval" },
+            { value: "pending", label: "Pending review" },
+            { value: "rejected", label: "Rejected" },
+          ]}
+        />
         <button type="submit" className={buttonClass("secondary", "sm")}>
           Filter
         </button>

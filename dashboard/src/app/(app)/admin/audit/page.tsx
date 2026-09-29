@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
-import { buttonClass, cn, inputClass, Panel } from "@/components/ui";
+import { buttonClass, cn, inputClass, Panel, Select } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Audit log" };
 
@@ -38,14 +38,14 @@ export default async function AuditPage({ searchParams }: PageProps<"/admin/audi
   return (
     <Panel title="Audit log" description="Admin actions and security-relevant account events, newest first.">
       <form method="get" className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-        <select name="action" defaultValue={action} aria-label="Action" className={cn(inputClass, "h-8 w-auto")}>
-          <option value="">All actions</option>
-          {actions.map((a) => (
-            <option key={a.action} value={a.action}>
-              {a.action}
-            </option>
-          ))}
-        </select>
+        <Select
+          name="action"
+          defaultValue={action}
+          aria-label="Action"
+          className="h-8 w-auto min-w-44"
+          mono
+          options={[{ value: "", label: "All actions" }, ...actions.map((a) => ({ value: a.action, label: a.action }))]}
+        />
         <input name="actor" defaultValue={actor} placeholder="Actor email" aria-label="Actor" className={cn(inputClass, "h-8 sm:w-64")} />
         <button type="submit" className={buttonClass("secondary", "sm")}>
           Filter

@@ -189,6 +189,11 @@ body {
   border-radius: 3px;
 }
 
+/* Listbox options show focus through their highlight instead. */
+[role="option"]:focus-visible {
+  outline: none;
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }

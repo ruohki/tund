@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { resetSettingAction, saveSettingsAction } from "@/app/actions/admin";
-import { cn, FormMessage, inputClass, Panel } from "@/components/ui";
+import { cn, FormMessage, inputClass, Panel, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
 
 export type FieldView = {
@@ -62,11 +62,17 @@ function Control({ f }: { f: FieldView }) {
       );
     case "signup":
       return (
-        <select id={id} name={f.key} defaultValue={String(f.value)} className={cn(inputClass, "sm:w-60")}>
-          <option value="open">Anyone (open sign-up)</option>
-          <option value="invite">Only with a team invite</option>
-          <option value="closed">Nobody (admins create accounts)</option>
-        </select>
+        <Select
+          id={id}
+          name={f.key}
+          defaultValue={String(f.value)}
+          className="sm:w-60"
+          options={[
+            { value: "open", label: "Anyone (open sign-up)" },
+            { value: "invite", label: "Only with a team invite" },
+            { value: "closed", label: "Nobody (admins create accounts)" },
+          ]}
+        />
       );
     case "int":
       return f.key === "limit_bandwidth_kbps" ? (
@@ -85,13 +91,13 @@ function Control({ f }: { f: FieldView }) {
       );
     case "enum":
       return (
-        <select id={id} name={f.key} defaultValue={String(f.value)} className={cn(inputClass, "sm:w-72")}>
-          {f.options?.map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <Select
+          id={id}
+          name={f.key}
+          defaultValue={String(f.value)}
+          className="sm:w-72"
+          options={(f.options ?? []).map(([v, label]) => ({ value: v, label }))}
+        />
       );
     case "list":
       return (

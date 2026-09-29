@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { setUserLimitsAction } from "@/app/actions/admin";
-import { cn, FormMessage, inputClass } from "@/components/ui";
+import { cn, FormMessage, inputClass, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
 
 type Mode = "inherit" | "unlimited" | "custom";
@@ -29,17 +29,18 @@ function Row({
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-[13.5px] font-medium text-ink">{label}</legend>
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           name={`${name}_mode`}
           value={mode}
-          onChange={(e) => setMode(e.target.value as Mode)}
+          onValueChange={(v) => setMode(v as Mode)}
           aria-label={`${label}: how it's set`}
-          className={cn(inputClass, "sm:w-56")}
-        >
-          <option value="inherit">Default ({inheritLabel})</option>
-          <option value="unlimited">Unlimited</option>
-          <option value="custom">Custom value</option>
-        </select>
+          className="sm:w-56"
+          options={[
+            { value: "inherit", label: `Default (${inheritLabel})` },
+            { value: "unlimited", label: "Unlimited" },
+            { value: "custom", label: "Custom value" },
+          ]}
+        />
         {mode === "custom" ? (
           <span className="flex items-center gap-2">
             <input

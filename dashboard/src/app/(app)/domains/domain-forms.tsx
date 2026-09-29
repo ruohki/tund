@@ -15,7 +15,7 @@ import {
 } from "@/app/actions/domains";
 import type { PublicConfig } from "@/lib/config";
 import { ALLOW_LIST_HINT } from "@/lib/validate";
-import { AuthBadge, Badge, buttonClass, cn, Field, FormMessage, inputClass } from "@/components/ui";
+import { AuthBadge, Badge, buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
 import { Command, ConfirmSubmit, CopyButton, SubmitButton } from "@/components/client-ui";
 
 export type DomainItem = {
@@ -263,16 +263,14 @@ function PolicyEditor({ domain, providers }: { domain: DomainItem; providers: Pr
         providers.length ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Identity provider" htmlFor={`prov-${domain.id}`}>
-              <select id={`prov-${domain.id}`} name="provider" defaultValue={domain.providerId} required className={inputClass}>
-                <option value="" disabled>
-                  Choose…
-                </option>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.ref})
-                  </option>
-                ))}
-              </select>
+              <Select
+                id={`prov-${domain.id}`}
+                name="provider"
+                defaultValue={domain.providerId}
+                required
+                placeholder="Choose…"
+                options={providers.map((p) => ({ value: p.id, label: `${p.name} (${p.ref})` }))}
+              />
             </Field>
             <Field
               label="Allowed people"

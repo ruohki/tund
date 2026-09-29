@@ -45,16 +45,16 @@ export function ReportForm({ host, placeholder, siteKey }: { host: string; place
         />
       </Field>
       <Field label="What's wrong?" htmlFor="category">
-        <Select id="category" name="category" value={v.category} onChange={set("category")} required autoFocus={Boolean(host)}>
-          <option value="" disabled>
-            Choose one
-          </option>
-          {REPORT_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </Select>
+        <Select
+          id="category"
+          name="category"
+          value={v.category}
+          onValueChange={(category) => setV((prev) => ({ ...prev, category }))}
+          required
+          autoFocus={Boolean(host)}
+          placeholder="Choose one"
+          options={REPORT_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+        />
       </Field>
       <Field label="Full URL" htmlFor="url" hint="Optional: the exact page, if it isn't the start page.">
         <Input

@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import { statusClass, STATUS_TEXT } from "@/lib/format";
 
-export function cn(...parts: (string | false | null | undefined)[]) {
-  return parts.filter(Boolean).join(" ");
-}
+import { cn, inputClass } from "./classes";
+
+export { cn, inputClass };
+export { Select, type SelectOption, type SelectGroup } from "./select";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
@@ -40,11 +41,6 @@ export function ButtonLink({
   return <Link className={buttonClass(variant, size, className)} {...props} />;
 }
 
-export const inputClass = cn(
-  "h-8.5 w-full rounded-[5px] border border-line-strong bg-surface px-2.5 text-sm text-ink",
-  "placeholder:text-muted/80 focus:border-focus focus:outline-none focus:ring-2 focus:ring-focus/20",
-  "disabled:opacity-60",
-);
 
 export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input className={cn(inputClass, className)} {...props} />;
@@ -54,9 +50,6 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return <textarea className={cn(inputClass, "h-auto py-2 leading-snug", className)} {...props} />;
 }
 
-export function Select({ className, ...props }: ComponentProps<"select">) {
-  return <select className={cn(inputClass, "pr-8", className)} {...props} />;
-}
 
 export function Field({
   label,

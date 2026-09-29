@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Activity, Pause, Play, Search, Trash2 } from "lucide-react";
 import type { RequestDetail as Detail, RequestSummary } from "@/lib/requests";
 import { formatBytes, formatClock, formatDuration, statusClass } from "@/lib/format";
-import { buttonClass, cn, inputClass, StatusCode } from "../ui";
+import { buttonClass, cn, inputClass, Select, StatusCode } from "../ui";
 import { Command } from "../client-ui";
 import { useLiveEvents } from "../live";
 import { useDisplayTimeZone } from "@/lib/use-hydrated";
@@ -31,7 +31,6 @@ function matches(r: RequestSummary, f: Filters) {
 }
 
 // Filter controls size to their content (inputClass is full width by default).
-const controlClass = inputClass.replace("w-full", "");
 
 function query(f: Filters, extra: Record<string, string> = {}) {
   const p = new URLSearchParams();
@@ -237,46 +236,36 @@ export function Inspector({
     <div className="flex h-[calc(100dvh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-line bg-surface max-lg:h-[calc(100dvh-8.5rem)]">
       {/* Filter row: scopes the list below it. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <select
+        <Select
           aria-label="Hostname"
           value={filters.host}
-          onChange={(e) => {
-            const v = e.target.value;
+          onValueChange={(v) => {
             if (v.startsWith("c:") && onSwitch) onSwitch(v.slice(2));
             else setFilters((f) => ({ ...f, host: v }));
           }}
-          className={cn(controlClass, "h-7.5 max-w-72 font-mono text-[12.5px]")}
-        >
-          <option value="">All HTTP requests</option>
-          <optgroup label="HTTP">
-            {knownHosts.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </optgroup>
-          {onSwitch ? (
-            <optgroup label="TCP / TLS connections">
-              <option value="c:">All connections</option>
-              {addresses.map((a) => (
-                <option key={a} value={`c:${a}`}>
-                  {a}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-        </select>
-        <select
+          mono
+          className="h-7.5 w-auto min-w-48 max-w-72 text-[12.5px]"
+          options={[
+            { value: "", label: "All HTTP requests" },
+            { label: "HTTP", options: knownHosts.map((h) => ({ value: h, label: h })) },
+            ...(onSwitch
+              ? [
+                  {
+                    label: "TCP / TLS connections",
+                    options: [{ value: "c:", label: "All connections" }, ...addresses.map((a) => ({ value: `c:${a}`, label: a }))],
+                  },
+                ]
+              : []),
+          ]}
+        />
+        <Select
           aria-label="Method"
           value={filters.method}
-          onChange={(e) => setFilters((f) => ({ ...f, method: e.target.value }))}
-          className={cn(controlClass, "h-7.5 font-mono text-[12.5px]")}
-        >
-          <option value="">Any method</option>
-          {METHODS.map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
+          onValueChange={(v) => setFilters((f) => ({ ...f, method: v }))}
+          mono
+          className="h-7.5 w-auto min-w-32 text-[12.5px]"
+          options={[{ value: "", label: "Any method" }, ...METHODS.map((m) => ({ value: m, label: m }))]}
+        />
         <div role="radiogroup" aria-label="Status" className="inline-flex h-7.5 items-center rounded-[5px] border border-line-strong p-0.5">
           {STATUSES.map((s) => (
             <button
