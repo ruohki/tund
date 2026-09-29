@@ -1,0 +1,10 @@
+.env
+.env.local
+.playwright-mcp/
+node_modules/
+.next/
+*.tsbuildinfo
+/tund
+/tund-server
+dashboard/.next-*/
+dashboard/tsconfig.tsbuildinfo

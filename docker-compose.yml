@@ -1,0 +1,114 @@
+# tund: self-hosted tunnels. Configure via .env (see .env.example), then:
+#   docker compose pull && docker compose up -d     (published images)
+#   docker compose up -d --build                    (build from this checkout)
+#
+# The server and dashboard use host networking: the edge must listen on 80,
+# 443 and the TCP tunnel port range (publishing thousands of ports through
+# Docker's proxy is very expensive). Everything internal is bound to
+# 127.0.0.1 only: dashboard :3000, internal API :4040, Postgres :55432.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tund
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tund
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tund -d tund"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    image: ghcr.io/ruohki/tund-server:${TUND_IMAGE_TAG:-latest}
+    build:
+      context: .
+      args:
+        VERSION: ${TUND_VERSION:-dev}
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TUND_BASE_DOMAIN: ${TUND_BASE_DOMAIN:?set TUND_BASE_DOMAIN in .env}
+      TUND_DASHBOARD_HOST: ${TUND_DASHBOARD_HOST:-}
+      TUND_DATABASE_URL: postgres://tund:${POSTGRES_PASSWORD}@127.0.0.1:55432/tund?sslmode=disable
+      TUND_SECRET: ${TUND_SECRET:?set TUND_SECRET in .env}
+      TUND_INTERNAL_SECRET: ${TUND_INTERNAL_SECRET:?set TUND_INTERNAL_SECRET in .env}
+      TUND_DASHBOARD_UPSTREAM: http://127.0.0.1:3000
+      TUND_HTTP_ADDR: ":${TUND_HTTP_PORT:-80}"
+      TUND_HTTPS_ADDR: ":${TUND_HTTPS_PORT:-443}"
+      TUND_INTERNAL_ADDR: 127.0.0.1:4040
+      TUND_TLS_MODE: ${TUND_TLS_MODE:-acme}
+      TUND_ACME_EMAIL: ${TUND_ACME_EMAIL:-}
+      TUND_ACME_CA: ${TUND_ACME_CA:-}
+      TUND_DNS_PROVIDER: ${TUND_DNS_PROVIDER:-}
+      TUND_DNS_API_TOKEN: ${TUND_DNS_API_TOKEN:-}
+      TUND_TLS_CERT_FILE: ${TUND_TLS_CERT_FILE:-}
+      TUND_TLS_KEY_FILE: ${TUND_TLS_KEY_FILE:-}
+      TUND_PUBLIC_SCHEME: ${TUND_PUBLIC_SCHEME:-}
+      TUND_PUBLIC_PORT: ${TUND_PUBLIC_PORT:-}
+      TUND_TCP_PORTS: ${TUND_TCP_PORTS:-}
+      TUND_TCP_HOST: ${TUND_TCP_HOST:-}
+      TUND_UNTRUSTED_CUSTOM_DOMAINS: ${TUND_UNTRUSTED_CUSTOM_DOMAINS:-review}
+      TUND_UNTRUSTED_TCP: ${TUND_UNTRUSTED_TCP:-true}
+      TUND_UNTRUSTED_TLS: ${TUND_UNTRUSTED_TLS:-true}
+      TUND_SAFE_BROWSING_API_KEY: ${TUND_SAFE_BROWSING_API_KEY:-}
+      TUND_BANDWIDTH_KBPS: ${TUND_BANDWIDTH_KBPS:-0}
+      TUND_TRANSFER_GB: ${TUND_TRANSFER_GB:-0}
+      TUND_DOWNLOAD_BASE_URL: ${TUND_DOWNLOAD_BASE_URL:-}
+      TUND_CAPTURE_MAX_BODY: ${TUND_CAPTURE_MAX_BODY:-262144}
+      TUND_RETENTION_DAYS: ${TUND_RETENTION_DAYS:-7}
+      TUND_MAX_TUNNELS_PER_USER: ${TUND_MAX_TUNNELS_PER_USER:-0}
+      TUND_MAX_PINNED_PER_USER: ${TUND_MAX_PINNED_PER_USER:-0}
+      TUND_MAX_DOMAINS_PER_USER: ${TUND_MAX_DOMAINS_PER_USER:-0}
+      TUND_MAX_TEAMS_PER_USER: ${TUND_MAX_TEAMS_PER_USER:-3}
+      TUND_AUTO_PIN: ${TUND_AUTO_PIN:-true}
+      TUND_REDIRECT_HOSTS: ${TUND_REDIRECT_HOSTS:-}
+      TUND_BROWSER_WARNING: ${TUND_BROWSER_WARNING:-false}
+      TUND_ABUSE_CONTACT: ${TUND_ABUSE_CONTACT:-}
+      TUND_DEBUG: ${TUND_DEBUG:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - tund-data:/data
+
+  dashboard:
+    image: ghcr.io/ruohki/tund-dashboard:${TUND_IMAGE_TAG:-latest}
+    build: ./dashboard
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - server
+    environment:
+      HOSTNAME: 127.0.0.1
+      PORT: "3000"
+      TUND_DATABASE_URL: postgres://tund:${POSTGRES_PASSWORD}@127.0.0.1:55432/tund?sslmode=disable
+      TUND_BASE_DOMAIN: ${TUND_BASE_DOMAIN}
+      TUND_DASHBOARD_HOST: ${TUND_DASHBOARD_HOST:-}
+      TUND_PUBLIC_SCHEME: ${TUND_PUBLIC_SCHEME:-https}
+      TUND_PUBLIC_PORT: ${TUND_PUBLIC_PORT:-}
+      TUND_INTERNAL_URL: http://127.0.0.1:4040
+      TUND_INTERNAL_SECRET: ${TUND_INTERNAL_SECRET}
+      TUND_SERVER_IP: ${TUND_SERVER_IP:-}
+      TUND_ALLOW_SIGNUP: ${TUND_ALLOW_SIGNUP:-false}
+      TUND_MAX_PINNED_PER_USER: ${TUND_MAX_PINNED_PER_USER:-0}
+      TUND_MAX_DOMAINS_PER_USER: ${TUND_MAX_DOMAINS_PER_USER:-0}
+      TUND_MAX_TUNNELS_PER_USER: ${TUND_MAX_TUNNELS_PER_USER:-0}
+      TUND_MAX_TEAMS_PER_USER: ${TUND_MAX_TEAMS_PER_USER:-3}
+      TUND_BROWSER_WARNING: ${TUND_BROWSER_WARNING:-false}
+      TUND_ABUSE_CONTACT: ${TUND_ABUSE_CONTACT:-}
+      # Defaults shown next to Admin → Settings fields; keep them in sync with the server's.
+      TUND_AUTO_PIN: ${TUND_AUTO_PIN:-true}
+      TUND_RETENTION_DAYS: ${TUND_RETENTION_DAYS:-7}
+      TUND_CAPTURE_MAX_BODY: ${TUND_CAPTURE_MAX_BODY:-262144}
+      TZ: ${TZ:-UTC}
+
+volumes:
+  pgdata:
+  tund-data:

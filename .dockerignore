@@ -1,0 +1,5 @@
+.git
+.env
+dashboard
+docs
+**/*_test.go

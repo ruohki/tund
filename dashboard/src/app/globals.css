@@ -1,0 +1,289 @@
+@import "tailwindcss";
+
+/*
+ * tund — concrete greys lit by sodium amber.
+ * Amber is reserved for things that are live (online tunnels, the live stream,
+ * the brand mark). Everything else stays in ink and concrete.
+ */
+
+:root {
+  color-scheme: light;
+  --page: #edeff2;
+  --surface: #fbfcfc;
+  --surface-2: #f3f5f7;
+  --surface-3: #e8ebef;
+  --ink: #14171c;
+  --ink-2: #474e5a;
+  --muted: #737b89;
+  --line: #dde1e6;
+  --line-strong: #c3c9d2;
+  --sodium: #f0a81c;
+  --sodium-ink: #8a5a00;
+  --sodium-wash: rgb(240 168 28 / 0.14);
+  --sodium-glow: rgb(240 168 28 / 0.45);
+  --btn: #14171c;
+  --btn-ink: #f6f7f8;
+  --btn-hover: #2b3039;
+  --danger: #b8323f;
+  --danger-wash: rgb(207 63 90 / 0.1);
+  --ok: #17804a;
+  --ok-wash: rgb(31 157 87 / 0.12);
+  --focus: #2a78d6;
+  --s2xx: #1f9d57;
+  --s3xx: #2a78d6;
+  --s4xx: #c98500;
+  --s5xx: #cf3f5a;
+  --syn-str: #1b7a4f;
+  --syn-num: #2463b0;
+  --syn-lit: #a13d85;
+  --term-bg: #16191e;
+  --term-line: #262b33;
+  --term-ink: #e3e6ea;
+  --term-muted: #858d99;
+  --series-in: #2a78d6;
+  --series-out: #eb6834;
+  --shadow-pop: 0 1px 2px rgb(20 23 28 / 0.06), 0 8px 24px -6px rgb(20 23 28 / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0f1216;
+    --surface: #161a20;
+    --surface-2: #1b2027;
+    --surface-3: #232932;
+    --ink: #e6e9ee;
+    --ink-2: #a9b0bc;
+    --muted: #7a8391;
+    --line: #252b34;
+    --line-strong: #353c48;
+    --sodium: #f5b53a;
+    --sodium-ink: #f5b53a;
+    --sodium-wash: rgb(245 181 58 / 0.12);
+    --sodium-glow: rgb(245 181 58 / 0.5);
+    --btn: #e6e9ee;
+    --btn-ink: #12151a;
+    --btn-hover: #ffffff;
+    --danger: #ef6f84;
+    --danger-wash: rgb(207 63 90 / 0.16);
+    --ok: #3cc57d;
+    --ok-wash: rgb(35 168 99 / 0.16);
+    --focus: #5598e7;
+    --s2xx: #23a863;
+    --s3xx: #3987e5;
+    --s4xx: #c98500;
+    --s5xx: #cf3f5a;
+    --syn-str: #7cc89c;
+    --syn-num: #8cb6ef;
+    --syn-lit: #d993c8;
+    --term-bg: #0b0d10;
+    --term-line: #232932;
+    --term-ink: #e3e6ea;
+    --term-muted: #7d8592;
+    --series-in: #3987e5;
+    --series-out: #d95926;
+    --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f1216;
+  --surface: #161a20;
+  --surface-2: #1b2027;
+  --surface-3: #232932;
+  --ink: #e6e9ee;
+  --ink-2: #a9b0bc;
+  --muted: #7a8391;
+  --line: #252b34;
+  --line-strong: #353c48;
+  --sodium: #f5b53a;
+  --sodium-ink: #f5b53a;
+  --sodium-wash: rgb(245 181 58 / 0.12);
+  --sodium-glow: rgb(245 181 58 / 0.5);
+  --btn: #e6e9ee;
+  --btn-ink: #12151a;
+  --btn-hover: #ffffff;
+  --danger: #ef6f84;
+  --danger-wash: rgb(207 63 90 / 0.16);
+  --ok: #3cc57d;
+  --ok-wash: rgb(35 168 99 / 0.16);
+  --focus: #5598e7;
+  --s2xx: #23a863;
+  --s3xx: #3987e5;
+  --s4xx: #c98500;
+  --s5xx: #cf3f5a;
+  --syn-str: #7cc89c;
+  --syn-num: #8cb6ef;
+  --syn-lit: #d993c8;
+  --term-bg: #0b0d10;
+  --term-line: #232932;
+  --term-ink: #e3e6ea;
+  --term-muted: #7d8592;
+  --series-in: #3987e5;
+  --series-out: #d95926;
+  --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-sodium: var(--sodium);
+  --color-sodium-ink: var(--sodium-ink);
+  --color-sodium-wash: var(--sodium-wash);
+  --color-btn: var(--btn);
+  --color-btn-ink: var(--btn-ink);
+  --color-btn-hover: var(--btn-hover);
+  --color-danger: var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-ok: var(--ok);
+  --color-ok-wash: var(--ok-wash);
+  --color-focus: var(--focus);
+  --color-s2xx: var(--s2xx);
+  --color-s3xx: var(--s3xx);
+  --color-s4xx: var(--s4xx);
+  --color-s5xx: var(--s5xx);
+  --color-term-bg: var(--term-bg);
+  --color-term-line: var(--term-line);
+  --color-term-ink: var(--term-ink);
+  --color-term-muted: var(--term-muted);
+
+  --font-sans: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --shadow-pop: var(--shadow-pop);
+}
+
+html {
+  background: var(--page);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--page);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  font-feature-settings: "ss01" off;
+}
+
+::selection {
+  background: var(--sodium-wash);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin scrollbars for panes. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* The route line: a lit (or dark) tube from the public URL to the local service. */
+.route-tube {
+  position: relative;
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 2px;
+  overflow: visible;
+}
+.route-tube[data-lit="true"] {
+  background: var(--sodium);
+  box-shadow: 0 0 8px var(--sodium-glow);
+}
+.route-tube::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+  color: var(--line-strong);
+}
+.route-tube[data-lit="true"]::after {
+  color: var(--sodium);
+}
+.route-pulse {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 18px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, #fff8e6, var(--sodium) 60%, transparent);
+  animation: route-travel 900ms cubic-bezier(0.45, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+@keyframes route-travel {
+  from {
+    left: 0;
+    opacity: 1;
+  }
+  to {
+    left: calc(100% - 18px);
+    opacity: 0.2;
+  }
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--sodium);
+  box-shadow: 0 0 0 3px var(--sodium-wash), 0 0 10px var(--sodium-glow);
+}
+
+.flash-new {
+  animation: flash-new 1.6s ease-out;
+}
+@keyframes flash-new {
+  from {
+    background-color: var(--sodium-wash);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-pulse,
+  .flash-new {
+    animation: none;
+  }
+  .route-pulse {
+    display: none;
+  }
+}
+
+/* Code shows exactly the characters typed: no ligatures or contextual spacing. */
+.font-mono,
+code,
+pre,
+kbd {
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0, "liga" 0;
+}
