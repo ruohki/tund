@@ -9,6 +9,7 @@ import { effectiveLimits, monthUsage } from "@/lib/usage";
 import { getSettings } from "@/lib/settings";
 import { LimitsForm } from "./limits-form";
 import { CustomDomainsForm } from "./custom-domains-form";
+import { identitiesOf } from "@/lib/oauth";
 import { smtpConfigured } from "@/lib/mail";
 import { listTunnels } from "@/lib/metrics";
 import { isUuid } from "@/lib/requests";
@@ -48,6 +49,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
     monthUsage(id),
     getSettings(),
   ]);
+  const identities = await identitiesOf(id);
   const limits = await effectiveLimits({ id, isAdmin: Boolean(u.is_admin) });
   const monthBytes = usage.bytesIn + usage.bytesOut;
   const self = u.id === admin.id;
@@ -68,6 +70,12 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             {u.disabled_at ? <Badge tone="danger">Disabled</Badge> : null}
             {u.flagged_at ? <Badge tone="danger">Flagged</Badge> : null}
             {u.email_verified_at ? <Badge tone="ok">Verified</Badge> : <Badge tone="live">Unverified</Badge>}
+            {identities.map((i) => (
+              <Badge key={i.provider} tone="outline">
+                <span title={i.email}>{i.label}</span>
+              </Badge>
+            ))}
+            {u.password_hash === null ? <Badge tone="outline">No password</Badge> : null}
             <span className="text-muted">joined {formatDateTime(u.created_at)}</span>
           </span>
         }

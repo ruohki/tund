@@ -156,6 +156,16 @@ Every client binary talks to the hosted cloud instance by default: `tund/interna
 * `users.disabled_at` set → the dashboard refuses logins and deletes the user's sessions; the server rejects the user's authtokens (`403 {"error":"account disabled"}`) and, on `tund_config` `{"kind":"user_disabled","id":"<user id>"}`, disconnects their clients.
 * Sign-up (`TUND_ALLOW_SIGNUP=true`) also shows a public landing page on `/` for signed-out visitors; otherwise `/` redirects to `/login`.
 
+### Sign-in with Google and GitHub (migration 0014)
+
+Admins enable providers under `/admin/sign-in`; the `settings` row `oauth` holds `{"google"|"github": {"enabled", "client_id", "client_secret_enc"}}` (secret AES-256-GCM like the SMTP password, key from `TUND_INTERNAL_SECRET`). A provider appears on `/login` and `/signup` ("Continue with …") when it is enabled and its secret decrypts. Redirect URI to register: `<dashboard>/auth/oauth/<google|github>/callback`.
+
+* `GET /auth/oauth/<p>/start?next=…` (or `?intent=link`, signed in) sets the `tund_oauth` cookie (path `/auth/oauth`, HttpOnly, SameSite=Lax, 10 min, one use: provider, random `state`, PKCE verifier, `next`, intent) and redirects to the provider. Google: `openid email profile`, PKCE S256, `prompt=select_account`; GitHub: `read:user user:email`.
+* The callback checks `state` against the cookie, exchanges the code with the client secret and reads the account: Google `userinfo` (`sub`; email only when `email_verified`), GitHub `/user` (numeric `id`) and `/user/emails` (the primary verified address, else any verified one).
+* `user_identities (user_id, provider, subject, email)`, unique per `(provider, subject)` and `(user_id, provider)`. Sign-in: a known identity signs its user in; otherwise an account with the same (verified, lowercased) email is connected and signed in (`email_verified_at` set if missing); otherwise a new account is created under the sign-up rules: `signup_mode` (invite: `next` must be a valid invite whose email matches), disposable addresses, `signup_rate_limit`; Turnstile is not asked. New accounts get `password_hash = NULL` (they may set a password without the current one under Settings) and a verified email; "Continuing … you agree to the Terms and the Acceptable Use Policy" is shown next to the buttons while sign-up is possible. Disabled accounts are refused.
+* Errors go back to `/login?error=<code>` (link: `/settings?oauth_error=<code>`) with fixed messages: `state`, `cancelled`, `failed`, `unavailable`, `no_email`, `disabled`, `signup_closed`, `signup_invite`, `invite_email`, `disposable`, `rate`, `taken`, `last_method`.
+* Settings → *Sign-in methods*: connect (`intent=link`; an identity already on another user → `taken`) and disconnect (refused with `last_method` unless a password or another identity remains). Audit: `user.signup` (with provider), `user.identity_link`, `user.identity_unlink`.
+
 ### Limits (0 = unlimited)
 
 | var | enforced by | |
@@ -339,7 +349,7 @@ Every admin action and security-relevant account event is appended to `audit_log
 
 ### Admin pages (`/admin/*`, `users.is_admin` only; 404 for others)
 
-`/admin` overview (edge status incl. certificate expiry, counts, requests/24h, top accounts by traffic, recent sign-ups), `/admin/users` (+ `/admin/users/[id]` detail), `/admin/tunnels` (all online tunnels, stop with reason), `/admin/teams`, `/admin/domains`, `/admin/settings`, `/admin/email` (SMTP form + "send test email" to any address + template previews), `/admin/audit`.
+`/admin` overview (edge status incl. certificate expiry, counts, requests/24h, top accounts by traffic, recent sign-ups), `/admin/users` (+ `/admin/users/[id]` detail), `/admin/tunnels` (all online tunnels, stop with reason), `/admin/teams`, `/admin/domains`, `/admin/settings`, `/admin/email` (SMTP form + "send test email" to any address + template previews), `/admin/sign-in` (Google/GitHub sign-in, see "Sign-in with Google and GitHub"), `/admin/audit`.
 
 ## TCP and TLS tunnels, IP allow lists (migration 0007)
 

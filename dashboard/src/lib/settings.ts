@@ -1,6 +1,7 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { db, notify } from "./db";
+import type { OAuthProviderId } from "./oauth-shared";
 
 // Instance settings (docs/SPEC.md "Admin area, settings and email"): a stored
 // row wins over the TUND_* environment variable, which only provides the
@@ -18,6 +19,15 @@ export type SmtpSettings = {
   from_email: string;
   from_name: string;
 };
+
+/** One sign-in provider (Admin → Sign-in); the secret is stored encrypted like the SMTP password. */
+export type OAuthProviderSettings = {
+  enabled: boolean;
+  client_id: string;
+  client_secret_enc: string;
+};
+
+export type OAuthSettings = Partial<Record<OAuthProviderId, OAuthProviderSettings>>;
 
 export type Settings = {
   signup_mode: SignupMode;
@@ -54,10 +64,11 @@ export type Settings = {
   terms_markdown: string;
   acceptable_use_markdown: string;
   smtp: SmtpSettings | null;
+  oauth: OAuthSettings;
 };
 
 export type SettingKey = keyof Settings;
-export type EditableKey = Exclude<SettingKey, "smtp">;
+export type EditableKey = Exclude<SettingKey, "smtp" | "oauth">;
 
 type Kind = "bool" | "int" | "string" | "signup" | "enum" | "list" | "secret" | "markdown";
 
@@ -395,8 +406,8 @@ export const SETTING_DEFS: SettingDef[] = [
 const DEF = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
 export function defaults(): Settings {
-  const out = Object.fromEntries(SETTING_DEFS.map((d) => [d.key, d.fallback()])) as Omit<Settings, "smtp">;
-  return { ...out, smtp: null };
+  const out = Object.fromEntries(SETTING_DEFS.map((d) => [d.key, d.fallback()])) as Omit<Settings, "smtp" | "oauth">;
+  return { ...out, smtp: null, oauth: {} };
 }
 
 /** Validates a stored or submitted value for `key`; returns null when it's unusable. */
@@ -456,6 +467,21 @@ async function load(): Promise<Cache> {
         };
         stored.add(key);
       }
+      continue;
+    }
+    if (key === "oauth") {
+      const v = (r.value ?? {}) as Record<string, Partial<OAuthProviderSettings>>;
+      for (const p of ["google", "github"] as const) {
+        const c = v[p];
+        if (c && typeof c === "object") {
+          value.oauth[p] = {
+            enabled: c.enabled === true,
+            client_id: typeof c.client_id === "string" ? c.client_id : "",
+            client_secret_enc: typeof c.client_secret_enc === "string" ? c.client_secret_enc : "",
+          };
+        }
+      }
+      stored.add(key);
       continue;
     }
     if (!DEF.has(key as EditableKey)) continue;

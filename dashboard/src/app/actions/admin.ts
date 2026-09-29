@@ -19,9 +19,11 @@ import {
   storedKeys,
   writeSettings,
   type EditableKey,
+  type OAuthProviderSettings,
   type SmtpSecurity,
   type SmtpSettings,
 } from "@/lib/settings";
+import { isOAuthProvider, PROVIDER_LABEL } from "@/lib/oauth-shared";
 import { removeDomain } from "@/lib/static-hostnames";
 import { checkEmail } from "@/lib/validate";
 import type { FormState } from "./auth";
@@ -329,4 +331,32 @@ export async function setUserCustomDomainsAction(_: FormState, fd: FormData): Pr
   await audit(actorOf(admin), "user.custom_domains", u.email, { custom_domains: value });
   refresh();
   return { ok: "Saved. It applies to live tunnels right away." };
+}
+
+// --- sign-in providers (Google, GitHub) -------------------------------------------
+
+/** Saves one provider under the `oauth` setting; the secret is write-only like the SMTP password. */
+export async function saveOAuthProviderAction(_: FormState, fd: FormData): Promise<FormState> {
+  const admin = await requireAdmin();
+  const provider = str(fd, "provider");
+  if (!isOAuthProvider(provider)) return { error: "Unknown provider." };
+  const all = (await getSettings()).oauth;
+  const current = all[provider];
+  const secret = str(fd, "client_secret");
+  const next: OAuthProviderSettings = {
+    enabled: fd.get("enabled") === "on",
+    client_id: str(fd, "client_id").slice(0, 300),
+    client_secret_enc: secret ? encryptSecret(secret) : (current?.client_secret_enc ?? ""),
+  };
+  if (next.enabled && (!next.client_id || !next.client_secret_enc)) {
+    return { error: `Enter the client ID and secret from ${PROVIDER_LABEL[provider]} to turn it on.` };
+  }
+  await writeSettings({ oauth: { ...all, [provider]: next } }, admin.id);
+  await audit(actorOf(admin), "settings.update", `oauth.${provider}`, { enabled: next.enabled, secret_changed: Boolean(secret) });
+  refresh();
+  return {
+    ok: next.enabled
+      ? `Saved. “Continue with ${PROVIDER_LABEL[provider]}” is on the sign-in and sign-up pages now.`
+      : `Saved. ${PROVIDER_LABEL[provider]} sign-in is off.`,
+  };
 }

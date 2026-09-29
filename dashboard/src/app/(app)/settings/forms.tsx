@@ -23,7 +23,8 @@ export function ProfileForm({ name, email }: { name: string; email: string }) {
   );
 }
 
-export function PasswordForm() {
+/** Change the password, or set a first one for accounts created with Google or GitHub. */
+export function PasswordForm({ hasPassword = true }: { hasPassword?: boolean }) {
   const ref = useRef<HTMLFormElement>(null);
   const [state, action] = useActionState(async (s: Parameters<typeof changePasswordAction>[0], fd: FormData) => {
     const res = await changePasswordAction(s, fd);
@@ -32,15 +33,17 @@ export function PasswordForm() {
   }, null);
   return (
     <form ref={ref} action={action} className="flex flex-col gap-3.5">
-      <Field label="Current password" htmlFor="current">
-        <Input id="current" name="current" type="password" required autoComplete="current-password" />
-      </Field>
+      {hasPassword ? (
+        <Field label="Current password" htmlFor="current">
+          <Input id="current" name="current" type="password" required autoComplete="current-password" />
+        </Field>
+      ) : null}
       <Field label="New password" htmlFor="next" hint="At least 8 characters.">
         <Input id="next" name="next" type="password" required minLength={8} autoComplete="new-password" />
       </Field>
       <FormMessage state={state} />
       <div>
-        <SubmitButton pendingText="Changing…">Change password</SubmitButton>
+        <SubmitButton pendingText="Saving…">{hasPassword ? "Change password" : "Set password"}</SubmitButton>
       </div>
     </form>
   );

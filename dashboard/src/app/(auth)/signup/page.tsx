@@ -7,6 +7,8 @@ import { signupAction } from "@/app/actions/auth";
 import { AuthForm } from "../auth-form";
 import { publicPageMetadata, siteInfo } from "@/lib/seo";
 import { NextHint } from "../next-hint";
+import { OAuthButtons } from "../oauth-buttons";
+import { enabledProviders } from "@/lib/oauth";
 import { turnstileSiteKey } from "@/lib/turnstile";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -32,6 +34,7 @@ export default async function SignupPage({ searchParams }: PageProps<"/signup">)
         through this browser.
       </p>
       <NextHint next={next} />
+      <OAuthButtons providers={await enabledProviders()} next={next} terms />
       <AuthForm action={signupAction} mode="signup" next={next} turnstileSiteKey={await turnstileSiteKey()} />
       <p className="mt-6 text-[13px] text-ink-2">
         Already have an account?{" "}

@@ -8,6 +8,9 @@ import { loginAction } from "@/app/actions/auth";
 import { AuthForm } from "../auth-form";
 import { publicPageMetadata, siteInfo } from "@/lib/seo";
 import { NextHint } from "../next-hint";
+import { OAuthButtons } from "../oauth-buttons";
+import { enabledProviders } from "@/lib/oauth";
+import { oauthError } from "@/lib/oauth-shared";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { name } = await siteInfo();
@@ -15,11 +18,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next: rawNext, reset } = await searchParams;
+  const { next: rawNext, reset, error } = await searchParams;
   const next = safeNext(rawNext);
   if (!(await usersExist())) redirect(withNext("/setup", next));
   if (await getCurrentUser()) redirect(next);
-  const [signup, mailOn] = await Promise.all([signupCheck(next), smtpConfigured()]);
+  const [signup, mailOn, providers] = await Promise.all([signupCheck(next), smtpConfigured(), enabledProviders()]);
+  const oauthFailed = oauthError(error);
   return (
     <>
       <h1 className="text-[24px] font-semibold tracking-[-0.015em] text-ink">Sign in</h1>
@@ -29,7 +33,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           Your password was changed and you were signed out everywhere. Sign in with the new password.
         </p>
       ) : null}
+      {oauthFailed ? (
+        <p role="alert" className="mb-5 rounded-md border border-danger/30 bg-danger-wash px-3 py-2 text-[13px] text-danger">
+          {oauthFailed}
+        </p>
+      ) : null}
       <NextHint next={next} />
+      <OAuthButtons providers={providers} next={next} terms={signup.allowed} />
       <AuthForm action={loginAction} mode="login" next={next} />
       {mailOn ? (
         <p className="mt-4 text-[13px]">

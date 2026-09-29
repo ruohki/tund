@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import { getSession, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDateTime, timeAgo } from "@/lib/format";
-import { Badge, PageHeader, Panel } from "@/components/ui";
+import { Badge, buttonClass, PageHeader, Panel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/client-ui";
-import { revokeSessionAction } from "@/app/actions/account";
+import { disconnectIdentityAction, revokeSessionAction } from "@/app/actions/account";
+import { enabledProviders, identitiesOf } from "@/lib/oauth";
+import { OAUTH_PROVIDERS, oauthError, PROVIDER_LABEL } from "@/lib/oauth-shared";
+import { ProviderIcon } from "@/components/provider-icons";
 import { PasswordForm, ProfileForm } from "./forms";
 import { TransferUsage } from "@/components/transfer-usage";
 
@@ -17,12 +20,23 @@ function describeAgent(ua: string) {
   return os ? `${browser} on ${os}` : browser;
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireUser();
   const session = await getSession();
-  const sessions = await db()`
-    select id, user_agent, ip, created_at, expires_at from sessions
-    where user_id = ${user.id} and expires_at > now() order by created_at desc`;
+  const { oauth_error: oauthErr, oauth_linked: linkedNow } = await searchParams;
+  const [sessions, providers, identities, [pw]] = await Promise.all([
+    db()`
+      select id, user_agent, ip, created_at, expires_at from sessions
+      where user_id = ${user.id} and expires_at > now() order by created_at desc`,
+    enabledProviders(),
+    identitiesOf(user.id),
+    db()`select password_hash is not null as has from users where id = ${user.id}`,
+  ]);
+  const hasPassword = Boolean(pw?.has);
+  // Enabled providers, plus ones still connected after an admin turned them off.
+  const methods = OAUTH_PROVIDERS.filter((p) => providers.includes(p) || identities.some((i) => i.provider === p));
+  const methodError = oauthError(oauthErr);
+  const linkedLabel = typeof linkedNow === "string" && linkedNow in PROVIDER_LABEL ? PROVIDER_LABEL[linkedNow as keyof typeof PROVIDER_LABEL] : null;
 
   return (
     <>
@@ -31,10 +45,60 @@ export default async function SettingsPage() {
         <Panel title="Profile" bodyClassName="p-4">
           <ProfileForm name={user.name} email={user.email} />
         </Panel>
-        <Panel title="Password" description="Changing it signs out your other sessions." bodyClassName="p-4">
-          <PasswordForm />
+        <Panel
+          title="Password"
+          description={
+            hasPassword
+              ? "Changing it signs out your other sessions."
+              : "You sign in with a connected account. Set a password to also sign in with your email."
+          }
+          bodyClassName="p-4"
+        >
+          <PasswordForm hasPassword={hasPassword} />
         </Panel>
       </div>
+      {methods.length ? (
+        <Panel title="Sign-in methods" description="Accounts you can sign in with besides your password." className="mt-6">
+          {methodError || linkedLabel ? (
+            <p
+              role={methodError ? "alert" : "status"}
+              className={
+                methodError
+                  ? "border-b border-line bg-danger-wash px-4 py-2.5 text-[13px] text-danger"
+                  : "border-b border-line bg-ok-wash px-4 py-2.5 text-[13px] text-ok"
+              }
+            >
+              {methodError ?? `Connected your ${linkedLabel} account.`}
+            </p>
+          ) : null}
+          <ul className="divide-y divide-line">
+            {methods.map((p) => {
+              const id = identities.find((i) => i.provider === p);
+              return (
+                <li key={p} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="flex min-w-0 items-center gap-2.5 text-[13.5px] text-ink">
+                    <ProviderIcon provider={p} />
+                    {PROVIDER_LABEL[p]}
+                    {id ? <span className="truncate text-[12.5px] text-muted">{id.email || "connected"}</span> : null}
+                  </span>
+                  {id ? (
+                    <form action={disconnectIdentityAction}>
+                      <input type="hidden" name="provider" value={p} />
+                      <ConfirmSubmit variant="ghost" confirmText={`Disconnect ${PROVIDER_LABEL[p]}?`}>
+                        Disconnect
+                      </ConfirmSubmit>
+                    </form>
+                  ) : providers.includes(p) ? (
+                    <a href={`/auth/oauth/${p}/start?intent=link`} className={buttonClass("secondary", "sm")}>
+                      Connect
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </Panel>
+      ) : null}
       <TransferUsage user={user} className="mt-6" />
       <Panel
         title="Sessions"

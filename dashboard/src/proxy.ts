@@ -3,7 +3,7 @@ import { cookieValues, sessionCookieName, sessionCookieSecure } from "@/lib/sess
 
 const PUBLIC_PAGES = new Set(["/login", "/setup", "/signup", "/forgot-password", "/report", "/terms", "/acceptable-use"]);
 // Links from emails and invites work without a session.
-const PUBLIC_PREFIXES = ["/invite/", "/reset-password/", "/verify-email/"];
+const PUBLIC_PREFIXES = ["/invite/", "/reset-password/", "/verify-email/", "/auth/oauth/"];
 
 // Optimistic check only: the real session validation happens in requireUser().
 export function proxy(request: NextRequest) {
