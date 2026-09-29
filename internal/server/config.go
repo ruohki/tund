@@ -29,6 +29,12 @@ type Config struct {
 	ACMECA      string
 	CertDir     string
 	CertStorage string // file | postgres (shared by all nodes)
+
+	// Cluster (edge nodes): empty RelayURL = single-node mode.
+	Role        string // control | edge
+	NodeRegion  string
+	RelayAddr   string
+	RelayURL    string
 	DNSProvider string
 	DNSAPIToken string
 	TLSCertFile string
@@ -210,6 +216,19 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 	c.TCPHost = normalizeHost(env("TUND_TCP_HOST", ""))
+	c.Role = env("TUND_ROLE", "control")
+	if c.Role != "control" && c.Role != "edge" {
+		errs = append(errs, fmt.Errorf("TUND_ROLE must be control or edge (got %q)", c.Role))
+	}
+	c.NodeRegion = env("TUND_NODE_REGION", "")
+	c.RelayAddr = env("TUND_RELAY_ADDR", ":4443")
+	c.RelayURL = env("TUND_RELAY_URL", "")
+	if c.Role == "edge" && c.RelayURL == "" {
+		errs = append(errs, errors.New("TUND_ROLE=edge needs TUND_RELAY_URL (how other nodes reach this node)"))
+	}
+	if c.RelayURL != "" && env("TUND_CERT_STORAGE", "") != "postgres" {
+		errs = append(errs, errors.New("edge nodes (TUND_RELAY_URL set) need TUND_CERT_STORAGE=postgres so all nodes share certificates and the ACME account"))
+	}
 	switch c.CertStorage = env("TUND_CERT_STORAGE", "file"); c.CertStorage {
 	case "file", "postgres":
 	default:

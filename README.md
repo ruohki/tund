@@ -185,6 +185,20 @@ A static hostname is a name on the hosted domain (`myapp.tund.io`) pinned to you
 
 Add the domain in the dashboard. Create the TXT record it shows (`_tund-challenge.<domain>`) and point the domain at the server with an A record to the server IP or a CNAME to the dashboard host. Then click *Verify*. Wildcards like `*.dev.example.com` let the client use any `<name>.dev.example.com`.
 
+## Edge nodes (global)
+
+Run extra `tund-server` nodes in other regions so clients and visitors connect to a server near them, while one **control** node keeps the dashboard and database.
+
+* **Routing**: point the service domain (`tund.io` and `*.tund.io`) at all nodes with GeoDNS or anycast (e.g. Bunny Magic Containers anycast endpoints). A client connects to its nearest node; a visitor lands on theirs. If the tunnel lives on another node, the visitor's node relays the traffic there over an authenticated TLS link. That link is pinned to a per-node certificate published in the database, and every frame is HMAC-signed with `TUND_SECRET`. This covers HTTP, WebSockets, TLS passthrough and TCP.
+* **Shared state**: every node uses the control node's Postgres, including the certificate store (`TUND_CERT_STORAGE=postgres`). The wildcard, custom-domain certificates, ACME challenges and the ACME account (important for CAA) are shared. On first start with Postgres storage, a node imports the existing file-based certificates.
+* **Resilience**: a node that stops heartbeating for 45 s is considered dead and its tunnels are ended, so clients can reconnect elsewhere. A reconnecting client takes its hostnames over from its old, dead session on another node. Admins see nodes, regions and tunnel counts in the dashboard.
+
+Setup:
+
+1. On the control node, set `TUND_NODE_NAME`, `TUND_RELAY_URL` (the `host:port` other nodes use to reach its relay listener `TUND_RELAY_ADDR`, default `:4443`) and `TUND_CERT_STORAGE=postgres`, then restart. Make Postgres reachable from the edge nodes over a private network (WireGuard recommended) or TLS with a strict `pg_hba`.
+2. On each edge node, use `docker-compose.edge.yml` with the same domain, secrets and DNS-provider settings, its own `TUND_NODE_NAME`/`TUND_NODE_REGION`/`TUND_RELAY_URL`, and `TUND_DATABASE_URL` pointing at the control database.
+3. Add the node's IP to GeoDNS or anycast for `tund.io` and `*.tund.io`, and open the relay port between nodes only.
+
 ## Abuse protection
 
 A public tunnel service will be used for phishing. tund layers several defences:

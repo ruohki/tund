@@ -1,0 +1,42 @@
+# An edge node: accepts tund clients and visitor traffic near its users and
+# relays whatever it doesn't hold itself to the node that does. It runs no
+# dashboard and no database; it uses the control node's Postgres.
+#
+#   cp .env.example .env   # same TUND_BASE_DOMAIN, TUND_DASHBOARD_HOST, TUND_SECRET,
+#                          # TUND_INTERNAL_SECRET and DNS provider settings as the
+#                          # control node, plus the variables below
+#   docker compose -f docker-compose.edge.yml up -d
+#
+# Network requirements: 80/443 (+ the TCP tunnel range) public; the relay port
+# (TUND_RELAY_ADDR, default 4443) and Postgres reachable between nodes only,
+# ideally over a private network such as WireGuard.
+services:
+  server:
+    image: ghcr.io/ruohki/tund-server:${TUND_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TUND_ROLE: edge
+      TUND_NODE_NAME: ${TUND_NODE_NAME:?set TUND_NODE_NAME, e.g. ash-1}
+      TUND_NODE_REGION: ${TUND_NODE_REGION:-}
+      TUND_RELAY_ADDR: ${TUND_RELAY_ADDR:-:4443}
+      TUND_RELAY_URL: ${TUND_RELAY_URL:?set TUND_RELAY_URL, the host:port other nodes use to reach this relay}
+      TUND_CERT_STORAGE: postgres
+      TUND_DATABASE_URL: ${TUND_DATABASE_URL:?set TUND_DATABASE_URL to the control node database}
+      TUND_BASE_DOMAIN: ${TUND_BASE_DOMAIN:?}
+      TUND_DASHBOARD_HOST: ${TUND_DASHBOARD_HOST:-}
+      TUND_SECRET: ${TUND_SECRET:?}
+      TUND_INTERNAL_SECRET: ${TUND_INTERNAL_SECRET:?}
+      TUND_INTERNAL_ADDR: 127.0.0.1:4040
+      TUND_TLS_MODE: ${TUND_TLS_MODE:-acme}
+      TUND_ACME_EMAIL: ${TUND_ACME_EMAIL:-}
+      TUND_DNS_PROVIDER: ${TUND_DNS_PROVIDER:-}
+      TUND_DNS_API_TOKEN: ${TUND_DNS_API_TOKEN:-}
+      TUND_TCP_PORTS: ${TUND_TCP_PORTS:-}
+      TUND_TCP_HOST: ${TUND_TCP_HOST:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - tund-data:/data
+
+volumes:
+  tund-data:

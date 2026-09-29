@@ -317,6 +317,20 @@ func stringList(raw json.RawMessage) []string {
 	return nil
 }
 
+// relayToOwner forwards a dashboard-host request that concerns a tunnel on
+// another node (OIDC sign-in) to that node.
+func (s *Server) relayToOwner(w http.ResponseWriter, r *http.Request, host string) bool {
+	if s.cluster == nil || isRelayed(r) {
+		return false
+	}
+	n, proto, ok := s.cluster.ownerOf(r.Context(), host)
+	if !ok || proto != protocol.ProtoHTTP {
+		return false
+	}
+	s.cluster.relayHTTP(w, r, n)
+	return true
+}
+
 // --- OIDC (served on the dashboard host) ---
 
 type oidcDiscovery struct {
@@ -374,6 +388,9 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := s.reg.Lookup(req.Host)
+	if t == nil && s.relayToOwner(w, r, req.Host) {
+		return
+	}
 	if t == nil {
 		s.oidcError(w, r, http.StatusNotFound, "Tunnel offline", req.Host+" is not online right now.")
 		return
@@ -434,6 +451,9 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := s.reg.Lookup(st.Host)
+	if t == nil && s.relayToOwner(w, r, st.Host) {
+		return
+	}
 	if t == nil {
 		s.oidcError(w, r, http.StatusNotFound, "Tunnel offline", st.Host+" went offline during sign-in.")
 		return
