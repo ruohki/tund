@@ -104,6 +104,19 @@ func (s *Server) replay(ctx context.Context, userID, requestID string, o *replay
 		return "", 0, err
 	}
 	t := s.reg.Lookup(orig.Hostname)
+	if t == nil && s.cluster != nil {
+		// The tunnel lives on another node: replay there.
+		if n, _, ok := s.cluster.ownerOf(ctx, orig.Hostname); ok {
+			reply, err := s.cluster.command(ctx, n, relayCmd{Cmd: "replay", UserID: userID, RequestID: requestID, Override: o})
+			if err != nil {
+				return "", 0, err
+			}
+			if !reply.OK {
+				return "", 0, &apiError{http.StatusConflict, reply.Error}
+			}
+			return reply.RequestID, reply.Status, nil
+		}
+	}
 	if t == nil || !s.mayReplayThrough(ctx, userID, t) {
 		return "", 0, &apiError{http.StatusConflict, "no tunnel is online for " + orig.Hostname}
 	}
@@ -182,6 +195,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"certificates":   certs,
 		"tcp_ports":      tcp,
 		"tcp_host":       s.tcpHost(),
+		"node":           s.cfg.NodeName(),
+		"nodes":          s.nodeStatus(r.Context()),
 	})
 }
 
@@ -194,19 +209,40 @@ func (s *Server) handleAdminStop(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "tunnel_id is required")
 		return
 	}
+	reason := strings.TrimSpace(in.Reason)
+	if reason == "" {
+		reason = "stopped by an administrator"
+	}
 	t := s.reg.ByID(in.TunnelID)
+	if t == nil && s.stopRemote(r.Context(), in.TunnelID, "", reason) {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
 	if t == nil {
 		s.store.EndTunnel(r.Context(), in.TunnelID)
 		writeJSON(w, http.StatusOK, map[string]any{})
 		return
 	}
-	reason := strings.TrimSpace(in.Reason)
-	if reason == "" {
-		reason = "stopped by an administrator"
-	}
 	t.session.unbind(t.BindID, reason)
 	logf("tunnel %s stopped by an administrator: %s", t.Hostname, reason)
 	writeJSON(w, http.StatusOK, map[string]any{})
+}
+
+// stopRemote asks the node holding a tunnel to stop it (userID "" = any owner).
+func (s *Server) stopRemote(ctx context.Context, tunnelID, userID, reason string) bool {
+	if s.cluster == nil {
+		return false
+	}
+	nodeName, err := s.store.TunnelNodeByID(ctx, tunnelID)
+	if err != nil || nodeName == s.cluster.name {
+		return false
+	}
+	n, ok := s.cluster.node(nodeName)
+	if !ok {
+		return false
+	}
+	reply, err := s.cluster.command(ctx, n, relayCmd{Cmd: "stop", TunnelID: tunnelID, UserID: userID, Reason: reason})
+	return err == nil && reply.OK
 }
 
 // mayReplayThrough: your own tunnels, or a teammate's tunnel on a hostname
@@ -252,6 +288,10 @@ func (s *Server) handleStopTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := s.reg.ByID(in.TunnelID)
+	if t == nil && s.stopRemote(r.Context(), in.TunnelID, in.UserID, "stopped from the dashboard") {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
 	if t == nil {
 		// Already gone: make sure the database agrees.
 		s.store.EndTunnelOwned(r.Context(), in.TunnelID, in.UserID)

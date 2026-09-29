@@ -144,25 +144,35 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (*Account, 
 }
 
 // CloseStale marks tunnels and sessions left open by a previous process as ended.
-func (s *Store) CloseStale(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `update tunnels set ended_at = now() where ended_at is null`)
+// CloseStale ends tunnels and sessions this node left open (a previous run
+// of the same node, or rows from before nodes existed).
+func (s *Store) CloseStale(ctx context.Context, node string) error {
+	_, err := s.pool.Exec(ctx, `update tunnels set ended_at = now() where ended_at is null and (node = $1 or node = '')`, node)
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `update agent_sessions set disconnected_at = now() where disconnected_at is null`)
+	_, err = s.pool.Exec(ctx, `update agent_sessions set disconnected_at = now() where disconnected_at is null and (node = $1 or node = '')`, node)
 	return err
 }
 
+// errInUse: an online tunnel on another node holds the hostname or port.
+type errInUse struct {
+	Node, UserID, TunnelID string
+}
+
+func (e *errInUse) Error() string { return "in use on node " + e.Node }
+
 type AgentSessionRow struct {
 	UserID, TokenID, ClientVersion, ClientOS, Hostname, RemoteAddr string
+	Node                                                           string
 }
 
 func (s *Store) CreateAgentSession(ctx context.Context, r AgentSessionRow) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		insert into agent_sessions (user_id, authtoken_id, client_version, client_os, hostname, remote_addr)
-		values ($1, nullif($2,'')::uuid, $3, $4, $5, $6) returning id::text`,
-		r.UserID, r.TokenID, r.ClientVersion, r.ClientOS, r.Hostname, r.RemoteAddr).Scan(&id)
+		insert into agent_sessions (user_id, authtoken_id, client_version, client_os, hostname, remote_addr, node)
+		values ($1, nullif($2,'')::uuid, $3, $4, $5, $6, $7) returning id::text`,
+		r.UserID, r.TokenID, r.ClientVersion, r.ClientOS, r.Hostname, r.RemoteAddr, r.Node).Scan(&id)
 	return id, err
 }
 
@@ -175,6 +185,7 @@ type TunnelRow struct {
 	SessionID, UserID, Name, Hostname, PublicURL, LocalAddr, AuthMode string
 	Proto                                                             string
 	RemotePort                                                        int
+	Node                                                              string
 }
 
 func (s *Store) CreateTunnel(ctx context.Context, r TunnelRow) (string, error) {
@@ -183,16 +194,35 @@ func (s *Store) CreateTunnel(ctx context.Context, r TunnelRow) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	// The in-memory registry guarantees exclusivity; close any leftover row.
-	if _, err := tx.Exec(ctx, `update tunnels set ended_at = now() where hostname = $1 and ended_at is null`, r.Hostname); err != nil {
+	// This node's registry guarantees local exclusivity: leftover rows of this
+	// node, of pre-cluster rows or of dead nodes are ended. A live tunnel on
+	// another node is reported as errInUse.
+	if _, err := tx.Exec(ctx, `update tunnels set ended_at = now()
+		where ended_at is null and (hostname = $1 or (proto = 'tcp' and $3 > 0 and remote_port = $3))
+		and (node = $2 or node = '' or node in (select name from nodes where last_seen < now() - interval '45 seconds'))`,
+		r.Hostname, r.Node, r.RemotePort); err != nil {
+		return "", err
+	}
+	var holder errInUse
+	err = tx.QueryRow(ctx, `select node, user_id::text, id::text from tunnels
+		where ended_at is null and (hostname = $1 or (proto = 'tcp' and $2 > 0 and remote_port = $2)) limit 1`,
+		r.Hostname, r.RemotePort).Scan(&holder.Node, &holder.UserID, &holder.TunnelID)
+	if err == nil {
+		return "", &holder
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
 	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		insert into tunnels (agent_session_id, user_id, name, hostname, public_url, local_addr, auth_mode, proto, remote_port)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, nullif($9, 0)) returning id::text`,
-		r.SessionID, r.UserID, r.Name, r.Hostname, r.PublicURL, r.LocalAddr, r.AuthMode, r.Proto, r.RemotePort).Scan(&id)
+		insert into tunnels (agent_session_id, user_id, name, hostname, public_url, local_addr, auth_mode, proto, remote_port, node)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, nullif($9, 0), $10) returning id::text`,
+		r.SessionID, r.UserID, r.Name, r.Hostname, r.PublicURL, r.LocalAddr, r.AuthMode, r.Proto, r.RemotePort, r.Node).Scan(&id)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return "", &errInUse{}
+		}
 		return "", err
 	}
 	return id, tx.Commit(ctx)
@@ -638,6 +668,131 @@ func (s *Store) CreateAbuseReport(ctx context.Context, r AbuseReport) (string, e
 		values ($1, $2, $3, $4, $5, $6, nullif($7, '')::uuid, nullif($8, '')::uuid) returning id::text`,
 		r.Hostname, r.URL, r.Category, r.Source, r.Description, details, r.UserID, r.TunnelID).Scan(&id)
 	return id, err
+}
+
+// --- cluster ---
+
+func (s *Store) UpsertNode(ctx context.Context, n nodeInfo) error {
+	_, err := s.pool.Exec(ctx, `insert into nodes (name, role, region, relay_url, relay_cert_sha256, version, started_at, last_seen)
+		values ($1, $2, $3, $4, $5, $6, now(), now())
+		on conflict (name) do update set role = excluded.role, region = excluded.region, relay_url = excluded.relay_url,
+			relay_cert_sha256 = excluded.relay_cert_sha256, version = excluded.version, last_seen = now(),
+			started_at = case when nodes.relay_cert_sha256 = excluded.relay_cert_sha256 then nodes.started_at else now() end`,
+		n.Name, n.Role, n.Region, n.RelayURL, n.CertSHA, n.Version)
+	return err
+}
+
+func (s *Store) Nodes(ctx context.Context) ([]nodeInfo, error) {
+	rows, err := s.pool.Query(ctx, `select name, role, region, relay_url, relay_cert_sha256, version, last_seen from nodes order by name`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (nodeInfo, error) {
+		var n nodeInfo
+		return n, r.Scan(&n.Name, &n.Role, &n.Region, &n.RelayURL, &n.CertSHA, &n.Version, &n.LastSeen)
+	})
+}
+
+// EndDeadNodes ends tunnels and sessions of nodes that stopped heartbeating.
+func (s *Store) EndDeadNodes(ctx context.Context, after time.Duration) error {
+	secs := fmt.Sprintf("%d seconds", int(after.Seconds()))
+	if _, err := s.pool.Exec(ctx, `update tunnels set ended_at = now() where ended_at is null and node in
+		(select name from nodes where last_seen < now() - $1::interval)`, secs); err != nil {
+		return err
+	}
+	_, err := s.pool.Exec(ctx, `update agent_sessions set disconnected_at = now() where disconnected_at is null and node in
+		(select name from nodes where last_seen < now() - $1::interval)`, secs)
+	return err
+}
+
+// TunnelNode finds the node of the online tunnel for a hostname or "tcp:<port>".
+func (s *Store) TunnelNode(ctx context.Context, key string) (node, proto string, err error) {
+	if port, ok := strings.CutPrefix(key, "tcp:"); ok {
+		err = s.pool.QueryRow(ctx, `select node, proto from tunnels where ended_at is null and proto = 'tcp' and remote_port = $1::int`, port).Scan(&node, &proto)
+	} else {
+		err = s.pool.QueryRow(ctx, `select node, proto from tunnels where ended_at is null and hostname = $1`, key).Scan(&node, &proto)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", errNotFound
+	}
+	return node, proto, err
+}
+
+// TunnelsPerNode counts online tunnels per node.
+func (s *Store) TunnelsPerNode(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `select node, count(*) from tunnels where ended_at is null group by node`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var n string
+		var c int
+		if err := rows.Scan(&n, &c); err != nil {
+			return nil, err
+		}
+		out[n] = c
+	}
+	return out, rows.Err()
+}
+
+// TunnelNodeByID returns the node holding an online tunnel.
+func (s *Store) TunnelNodeByID(ctx context.Context, id string) (string, error) {
+	var node string
+	err := s.pool.QueryRow(ctx, `select node from tunnels where id = $1 and ended_at is null`, id).Scan(&node)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errNotFound
+	}
+	return node, err
+}
+
+// RemoteTCPTunnels maps ports of online TCP tunnels on other live nodes to their node.
+func (s *Store) RemoteTCPTunnels(ctx context.Context, self string, after time.Duration) (map[int]string, error) {
+	rows, err := s.pool.Query(ctx, `select t.remote_port, t.node from tunnels t join nodes n on n.name = t.node
+		where t.ended_at is null and t.proto = 'tcp' and t.node <> $1 and n.last_seen > now() - $2::interval`,
+		self, fmt.Sprintf("%d seconds", int(after.Seconds())))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]string{}
+	for rows.Next() {
+		var port int
+		var node string
+		if err := rows.Scan(&port, &node); err != nil {
+			return nil, err
+		}
+		out[port] = node
+	}
+	return out, rows.Err()
+}
+
+type OnlineTunnel struct {
+	ID, Name, Proto, Hostname, PublicURL, LocalAddr, AuthMode, Node string
+	RemotePort                                                      int
+	Static                                                          bool
+	StartedAt                                                       time.Time
+	ClientHostname, ClientOS, ClientVersion                         string
+}
+
+// OnlineTunnels lists a user's online tunnels on all nodes.
+func (s *Store) OnlineTunnels(ctx context.Context, userID string) ([]OnlineTunnel, error) {
+	rows, err := s.pool.Query(ctx, `select t.id::text, t.name, t.proto, t.hostname, t.public_url, t.local_addr, t.auth_mode, t.node,
+		coalesce(t.remote_port, 0),
+		exists(select 1 from domains d where d.hostname = t.hostname and d.kind = 'subdomain')
+			or exists(select 1 from tcp_reservations tr where t.proto = 'tcp' and tr.port = t.remote_port),
+		t.started_at, a.hostname, a.client_os, a.client_version
+		from tunnels t join agent_sessions a on a.id = t.agent_session_id
+		where t.user_id = $1 and t.ended_at is null order by t.started_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (OnlineTunnel, error) {
+		var t OnlineTunnel
+		return t, r.Scan(&t.ID, &t.Name, &t.Proto, &t.Hostname, &t.PublicURL, &t.LocalAddr, &t.AuthMode, &t.Node,
+			&t.RemotePort, &t.Static, &t.StartedAt, &t.ClientHostname, &t.ClientOS, &t.ClientVersion)
+	})
 }
 
 // Settings returns all rows of the settings table.

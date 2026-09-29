@@ -32,7 +32,11 @@ func main() {
 	}
 	defer store.Close()
 
-	if err := server.New(cfg, store).Run(ctx); err != nil {
+	srv, err := server.New(cfg, store)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := srv.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

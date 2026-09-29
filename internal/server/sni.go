@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -53,9 +54,16 @@ func (r *sniRouter) route(c net.Conn) {
 		// Blocked hostnames never pass through; the HTTPS server answers them
 		// with the "blocked" page (where it has a certificate).
 		_, blocked := r.srv.blockedReason(normalizeHost(sni))
-		if t := r.srv.reg.Lookup(normalizeHost(sni)); !blocked && t != nil && t.Proto == protocol.ProtoTLS {
+		host := normalizeHost(sni)
+		if t := r.srv.reg.Lookup(host); !blocked && t != nil && t.Proto == protocol.ProtoTLS {
 			r.srv.pipeConn(t, c, peeked)
 			return
+		}
+		if cl := r.srv.cluster; !blocked && cl != nil && r.srv.reg.Lookup(host) == nil {
+			if n, proto, ok := cl.ownerOf(context.Background(), host); ok && proto == protocol.ProtoTLS {
+				cl.relayRaw(n, protocol.ProtoTLS, host, c, peeked)
+				return
+			}
 		}
 	}
 	select {

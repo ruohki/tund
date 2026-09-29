@@ -369,7 +369,7 @@ Public API: `GET /_tund/api/v1/connections?tunnel_id=&address=&limit=&before=` â
 * `tund tcp <port|host:port>` (`--remote-port N`, `--pin`, `--name`, `--allow-ip â€¦`), `tund tls <port|host:port>` (hostname flags like http: `--subdomain`, `--domain`, `--pin`, `--random`; plus `--terminate-cert/--terminate-key`, `--allow-ip`), `--allow-ip` also on `tund http`. tund.yml tunnels gain `proto`, `remote_port`, `allow_ips`, `terminate_cert`, `terminate_key`. The remembered-port state works like remembered labels (`auto: true`). The CLI prints `connection` events as log lines (remote, bytes, duration).
 * MCP: `start_tunnel` gains `proto`, `remote_port`, `allow_ips`; new read-only tool `list_connections`.
 
-## Edge nodes (migration 0008)
+## Edge nodes (migrations 0010, 0011)
 
 Goal: serve clients and visitors from the nearest location with **one global domain** (GeoDNS or anycast, e.g. Bunny Magic Containers anycast endpoints). Every `tund-server` process is a **node**; all nodes share the Postgres database.
 

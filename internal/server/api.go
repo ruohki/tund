@@ -128,16 +128,18 @@ func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiTunnels(w http.ResponseWriter, r *http.Request) {
 	acct := apiAccount(r)
+	rows, err := s.store.OnlineTunnels(r.Context(), acct.UserID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
 	out := []map[string]any{}
-	for _, t := range s.reg.Tunnels() {
-		if t.UserID != acct.UserID {
-			continue
-		}
+	for _, t := range rows {
 		out = append(out, map[string]any{
 			"id": t.ID, "name": t.Name, "proto": t.Proto, "remote_port": t.RemotePort,
 			"hostname": t.Hostname, "url": t.PublicURL, "local_addr": t.LocalAddr,
-			"auth_mode": t.Policy().Mode, "static": t.Static, "started_at": t.StartedAt,
-			"client": map[string]any{"hostname": t.session.ClientHostname, "os": t.session.ClientOS, "version": t.session.ClientVersion},
+			"auth_mode": t.AuthMode, "static": t.Static, "started_at": t.StartedAt, "node": t.Node,
+			"client": map[string]any{"hostname": t.ClientHostname, "os": t.ClientOS, "version": t.ClientVersion},
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tunnels": out})
@@ -146,6 +148,10 @@ func (s *Server) apiTunnels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiStopTunnel(w http.ResponseWriter, r *http.Request) {
 	acct := apiAccount(r)
 	t := s.reg.ByID(r.PathValue("id"))
+	if t == nil && s.stopRemote(r.Context(), r.PathValue("id"), acct.UserID, "stopped via the API") {
+		writeJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
 	if t == nil || t.UserID != acct.UserID {
 		writeJSONError(w, http.StatusNotFound, "no online tunnel with that id")
 		return

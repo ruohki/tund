@@ -52,13 +52,14 @@ type Server struct {
 	meters    meters                            // per-account bandwidth meters
 	blocked   atomic.Pointer[map[string]string] // blocked hostnames → reason
 	phish     *phishScanner
+	cluster   *cluster // nil in single-node mode
 	startedAt time.Time
 
 	oidcMu    sync.Mutex
 	oidcCache map[string]oidcDiscovery
 }
 
-func New(cfg *Config, store *Store) *Server {
+func New(cfg *Config, store *Store) (*Server, error) {
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
@@ -81,6 +82,13 @@ func New(cfg *Config, store *Store) *Server {
 	}
 	s.certs = newCerts(s)
 	s.tcp = newTCPPorts(cfg.TCPPortFrom, cfg.TCPPortTo)
+	if cfg.RelayURL != "" {
+		c, err := newCluster(s)
+		if err != nil {
+			return nil, err
+		}
+		s.cluster = c
+	}
 	s.api = s.newAPI()
 	s.dashboardProxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -96,7 +104,7 @@ func New(cfg *Config, store *Store) *Server {
 			s.renderPage(w, r, http.StatusBadGateway, pageDashboardDown, map[string]any{"Detail": err.Error()})
 		},
 	}
-	return s
+	return s, nil
 }
 
 func (s *Server) reservedLabel(l string) bool { return s.reserved[l] }
@@ -105,6 +113,16 @@ func (s *Server) reservedLabel(l string) bool { return s.reserved[l] }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := canonicalHost(r.Host)
 	if host == s.cfg.DashboardHost {
+		// Edge nodes serve the edge endpoints themselves and relay the
+		// dashboard UI to a control node.
+		if s.cluster != nil && s.cfg.Role == "edge" && !isRelayed(r) && !localDashboardPath(r.URL.Path) {
+			if n, ok := s.cluster.controlNode(); ok {
+				s.cluster.relayHTTP(w, r, n)
+				return
+			}
+			s.renderPage(w, r, http.StatusBadGateway, pageDashboardDown, map[string]any{"Detail": "no control node is online"})
+			return
+		}
 		s.serveDashboardHost(w, r)
 		return
 	}
@@ -128,6 +146,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	t := s.reg.Lookup(host)
 	if t == nil {
+		if s.cluster != nil && !isRelayed(r) {
+			if n, proto, ok := s.cluster.ownerOf(r.Context(), host); ok && proto == protocol.ProtoHTTP {
+				s.cluster.relayHTTP(w, r, n)
+				return
+			}
+		}
 		s.serveNoTunnel(w, r, host)
 		return
 	}
@@ -360,7 +384,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if err := s.store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	if err := s.store.CloseStale(ctx); err != nil {
+	if err := s.store.CloseStale(ctx, s.cfg.NodeName()); err != nil {
 		return err
 	}
 	if s.cfg.TLSMode != "off" {
@@ -380,6 +404,11 @@ func (s *Server) Run(ctx context.Context) error {
 
 	bg, stopBg := context.WithCancel(context.Background())
 	defer stopBg()
+	if s.cluster != nil {
+		if err := s.cluster.run(bg); err != nil {
+			return err
+		}
+	}
 	recDone := make(chan struct{})
 	go func() { s.recorder.Run(bg); close(recDone) }()
 	go s.store.Listen(bg, "tund_config", s.onConfigChange)

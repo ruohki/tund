@@ -74,6 +74,13 @@ services:
       TUND_BROWSER_WARNING: ${TUND_BROWSER_WARNING:-false}
       TUND_ABUSE_CONTACT: ${TUND_ABUSE_CONTACT:-}
       TUND_DEBUG: ${TUND_DEBUG:-}
+      # Edge nodes (optional): set TUND_RELAY_URL on the control node too, and
+      # TUND_CERT_STORAGE=postgres so all nodes share certificates.
+      TUND_NODE_NAME: ${TUND_NODE_NAME:-}
+      TUND_NODE_REGION: ${TUND_NODE_REGION:-}
+      TUND_RELAY_ADDR: ${TUND_RELAY_ADDR:-:4443}
+      TUND_RELAY_URL: ${TUND_RELAY_URL:-}
+      TUND_CERT_STORAGE: ${TUND_CERT_STORAGE:-file}
       TZ: ${TZ:-UTC}
     volumes:
       - tund-data:/data

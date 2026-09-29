@@ -96,6 +96,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		ClientOS:      r.Header.Get(protocol.HeaderOS),
 		Hostname:      r.Header.Get(protocol.HeaderHostname),
 		RemoteAddr:    clientIP(r),
+		Node:          s.cfg.NodeName(),
 	})
 	if err != nil {
 		logf("create agent session: %v", err)
@@ -357,13 +358,21 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 	t.ownerTrusted.Store(acct.IsAdmin || acct.Trusted)
 	s.updateWarn(t)
 
-	t.ID, err = s.store.CreateTunnel(ctx, TunnelRow{
+	row := TunnelRow{
 		SessionID: as.ID, UserID: acct.UserID, Name: t.Name, Hostname: host,
 		PublicURL: t.PublicURL, LocalAddr: t.LocalAddr, AuthMode: pol.Mode,
-		Proto: proto, RemotePort: t.RemotePort,
-	})
+		Proto: proto, RemotePort: t.RemotePort, Node: s.cfg.NodeName(),
+	}
+	t.ID, err = s.store.CreateTunnel(ctx, row)
+	var inUse *errInUse
+	if errors.As(err, &inUse) && s.takeOver(ctx, acct, inUse) {
+		t.ID, err = s.store.CreateTunnel(ctx, row)
+	}
 	if err != nil {
 		s.releaseTunnel(t)
+		if errors.As(err, &inUse) {
+			return nil, "", bindError(host + " is already in use by another tunnel")
+		}
 		return nil, "", err
 	}
 	if proto == protocol.ProtoHTTP {
@@ -383,8 +392,27 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 	if proto == protocol.ProtoTCP {
 		go s.serveTCP(t)
 	}
-	s.store.Notify(ctx, "tund_tunnels", map[string]string{"id": t.ID, "user_id": t.UserID, "hostname": host, "event": "online"})
+	s.store.Notify(ctx, "tund_tunnels", tunnelEvent(t, s.cfg.NodeName(), "online"))
 	return t, warning, nil
+}
+
+// takeOver asks the node holding a hostname for the same account to give it
+// up when that session is dead (a client reconnecting through another node).
+func (s *Server) takeOver(ctx context.Context, acct Account, h *errInUse) bool {
+	if s.cluster == nil || h.Node == "" || h.Node == s.cluster.name || h.UserID != acct.UserID {
+		return false
+	}
+	n, ok := s.cluster.node(h.Node)
+	if !ok {
+		return false // the node is dead; CreateTunnel ends its rows on retry soon
+	}
+	reply, err := s.cluster.command(ctx, n, relayCmd{Cmd: "takeover", TunnelID: h.TunnelID, UserID: acct.UserID})
+	return err == nil && reply.OK
+}
+
+func tunnelEvent(t *Tunnel, node, event string) map[string]any {
+	return map[string]any{"id": t.ID, "user_id": t.UserID, "hostname": t.Hostname, "event": event,
+		"node": node, "proto": t.Proto, "remote_port": t.RemotePort}
 }
 
 // releaseTunnel undoes a claim: registry entry and, for TCP, the listener.
@@ -803,6 +831,6 @@ func (s *Server) teardown(t *Tunnel) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.store.EndTunnel(ctx, t.ID)
-	s.store.Notify(ctx, "tund_tunnels", map[string]string{"id": t.ID, "user_id": t.UserID, "hostname": t.Hostname, "event": "offline"})
+	s.store.Notify(ctx, "tund_tunnels", tunnelEvent(t, s.cfg.NodeName(), "offline"))
 	logf("tunnel %s offline: %s", t.ID, t.PublicURL)
 }
