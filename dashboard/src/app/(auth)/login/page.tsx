@@ -14,7 +14,7 @@ import { oauthError } from "@/lib/oauth-shared";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { name } = await siteInfo();
-  return publicPageMetadata("/login", "Sign in", `Sign in to ${name} to manage your tunnels, domains and captured requests.`);
+  return publicPageMetadata("/login", "Sign in", `Sign in to ${name} to manage your tunnels, domains and captured requests.`, "product");
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
@@ -24,10 +24,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (await getCurrentUser()) redirect(next);
   const [signup, mailOn, providers] = await Promise.all([signupCheck(next), smtpConfigured(), enabledProviders()]);
   const oauthFailed = oauthError(error);
+  const { name: brand } = await siteInfo();
   return (
     <>
       <h1 className="text-[24px] font-semibold tracking-[-0.015em] text-ink">Sign in</h1>
-      <p className="mt-1 mb-6 text-[14px] text-ink-2">Manage tunnels, domains and access for this TUNd server.</p>
+      <p className="mt-1 mb-6 text-[14px] text-ink-2">Manage tunnels, domains and access for this {brand} server.</p>
       {reset === "1" ? (
         <p role="status" className="mb-5 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
           Your password was changed and you were signed out everywhere. Sign in with the new password.

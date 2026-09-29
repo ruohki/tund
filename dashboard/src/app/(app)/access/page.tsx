@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { IDENTITY_EXAMPLE, IdentityHeaderTable } from "@/components/identity-headers";
 import { requireUser } from "@/lib/auth";
 import { publicConfig } from "@/lib/config";
+import { siteInfo } from "@/lib/seo";
 import { db } from "@/lib/db";
 import { EmptyState, PageHeader, Panel } from "@/components/ui";
 import { Command, CopyButton } from "@/components/client-ui";
@@ -14,6 +15,7 @@ export const metadata: Metadata = { title: "Access control" };
 export default async function AccessPage() {
   const user = await requireUser();
   const cfg = publicConfig();
+  const { name: brand } = await siteInfo();
   const [rows, teamRows] = await Promise.all([
     db()`
       select p.*, (select count(*) from domains d where d.auth_oidc_provider_id = p.id) as domains
@@ -90,7 +92,7 @@ export default async function AccessPage() {
 
       <Panel
         title="Identity providers"
-        description="Register TUNd as a web application at your provider, then add it here."
+        description={`Register ${brand} as a web application at your provider, then add it here.`}
         actions={null}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2 px-4 py-2.5 text-[13px]">

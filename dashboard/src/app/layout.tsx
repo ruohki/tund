@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { DESCRIPTION, siteInfo, TAGLINE } from "@/lib/seo";
+import { defaultSocialMetadata, DESCRIPTION, siteInfo } from "@/lib/seo";
 
 const barlow = Barlow({
   subsets: ["latin"],
@@ -31,8 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description: DESCRIPTION,
     // App pages are private. Public pages (landing, sign-in, sign-up) opt back in.
     robots: { index: false, follow: false },
-    openGraph: { type: "website", siteName: name, title: `${name}: ${TAGLINE}`, description: DESCRIPTION, locale: "en_US" },
-    twitter: { card: "summary_large_image", title: `${name}: ${TAGLINE}`, description: DESCRIPTION },
+    ...defaultSocialMetadata(name),
   };
 }
 

@@ -16,7 +16,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return publicPageMetadata(
     "/signup",
     "Create an account",
-    `Create a ${name} account and share localhost on a public HTTPS address with tund http 3000.`,
+    `Create your ${name} account and share localhost on a public HTTPS address with tund http 3000.`,
+    "product",
   );
 }
 

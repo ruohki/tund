@@ -57,7 +57,7 @@ function NavLink({ href, label, icon: Icon, pathname }: { href: string; label: s
   );
 }
 
-export function Sidebar({ user }: { user: { email: string; name: string; isAdmin: boolean } }) {
+export function Sidebar({ user, brand }: { user: { email: string; name: string; isAdmin: boolean }; brand: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -67,7 +67,7 @@ export function Sidebar({ user }: { user: { email: string; name: string; isAdmin
     <div className="flex h-full flex-col">
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" className="rounded-sm">
-          <Wordmark />
+          <Wordmark name={brand} />
         </Link>
         <LiveIndicator />
       </div>
@@ -112,7 +112,7 @@ export function Sidebar({ user }: { user: { email: string; name: string; isAdmin
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-surface lg:block">{content}</aside>
       <div className="sticky top-0 z-30 flex h-12 items-center justify-between border-b border-line bg-surface px-4 lg:hidden">
         <Link href="/">
-          <Wordmark />
+          <Wordmark name={brand} />
         </Link>
         <button
           type="button"

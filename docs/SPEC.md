@@ -323,7 +323,7 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 | `abuse_contact` | string | `TUND_ABUSE_CONTACT` | server + dashboard |
 | `retention_days` | int | `TUND_RETENTION_DAYS` | server |
 | `capture_max_body` | int bytes (1024 … 10485760) | `TUND_CAPTURE_MAX_BODY` | server |
-| `instance_name` | string | `"tund"` | dashboard (emails, page titles) |
+| `instance_name` | string | `"TUNd"` | dashboard (wordmark, page titles, link previews, sign-in copy, emails) + server (the edge's own pages: offline, 404, warning, …) |
 | `notify_admins_on_signup` | bool | false | dashboard |
 | `smtp` | `{"host","port","security":"starttls"\|"tls"\|"none","username","password_enc","from_email","from_name"}` | none | dashboard |
 

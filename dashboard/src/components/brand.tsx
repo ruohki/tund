@@ -12,11 +12,12 @@ export function BrandMark({ size = 22, lit = true }: { size?: number; lit?: bool
   );
 }
 
-export function Wordmark() {
+/** Mark and instance name (Admin → Settings → Branding); server components use SiteWordmark. */
+export function Wordmark({ name = "TUNd" }: { name?: string }) {
   return (
     <span className="inline-flex items-center gap-2 text-ink">
       <BrandMark />
-      <span className="text-[19px] font-bold tracking-[-0.03em]">TUNd</span>
+      <span className="text-[19px] font-bold tracking-[-0.03em]">{name}</span>
     </span>
   );
 }

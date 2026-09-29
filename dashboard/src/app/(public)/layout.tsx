@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Wordmark } from "@/components/brand";
+import { SiteWordmark } from "@/components/site-wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { publicConfig } from "@/lib/config";
 
@@ -12,7 +12,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-[820px] items-center px-5 py-4 sm:px-8">
           <Link href="/" aria-label="Home">
-            <Wordmark />
+            <SiteWordmark />
           </Link>
         </div>
       </header>

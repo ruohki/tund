@@ -2,13 +2,12 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
-import { siteInfo, TAGLINE } from "./seo";
+import { OG_ALT, OG_SIZE, siteInfo, TAGLINE } from "./seo";
 
 // Shared renderer for opengraph-image and twitter-image. Fonts are bundled in
 // assets/fonts (OFL) and traced into the standalone build (next.config.ts).
 
-export const OG_SIZE = { width: 1200, height: 630 };
-export const OG_ALT = `${TAGLINE}: tund http 3000 gives a local port an HTTPS URL`;
+export { OG_ALT, OG_SIZE };
 
 const fontDir = join(process.cwd(), "assets/fonts");
 const fonts = Promise.all([
