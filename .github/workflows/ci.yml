@@ -42,6 +42,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Generates the global route types (PageProps, RouteContext) tsc needs.
+      - run: pnpm exec next typegen
       - run: pnpm lint
       - run: pnpm exec tsc --noEmit
       - run: pnpm build
