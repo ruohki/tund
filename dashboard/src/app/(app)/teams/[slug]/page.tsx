@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Globe, ShieldCheck, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
 import { db } from "@/lib/db";
 import { loadDomainItems } from "@/lib/domain-items";
@@ -54,7 +55,11 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
     domainUsage(user, "subdomain", { teamId: team.id }),
     domainUsage(user, "custom", { teamId: team.id }),
   ]);
-  const [tcp, tcpPorts] = await Promise.all([tcpConfig(), listTcpReservations(user.id, { teamId: team.id })]);
+  const [tcp, tcpPorts, customOn] = await Promise.all([
+    tcpConfig(),
+    listTcpReservations(user.id, { teamId: team.id }),
+    customDomainsEnabled(user),
+  ]);
 
   const members: MemberItem[] = memberRows.map((r) => ({
     id: r.id,
@@ -80,8 +85,9 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
     pinned.limit !== null && pinned.used >= pinned.limit
       ? `This team uses all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames and TCP ports) it can have.`
       : null;
-  const customFull =
-    custom.limit !== null && custom.used >= custom.limit
+  const customFull = !customOn
+    ? CUSTOM_DOMAINS_OFF
+    : custom.limit !== null && custom.used >= custom.limit
       ? `This team uses all ${custom.limit} custom ${custom.limit === 1 ? "domain" : "domains"} it can have.`
       : null;
   const callback = `${cfg.dashboardUrl}/_tund/oidc/callback`;

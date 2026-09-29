@@ -24,6 +24,7 @@ export type Settings = {
   require_email_verification: boolean;
   limit_tunnels: number;
   limit_pinned: number;
+  custom_domains: boolean;
   limit_domains: number;
   limit_teams: number;
   limit_bandwidth_kbps: number;
@@ -142,6 +143,15 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 0,
     max: 100000,
     fallback: () => envInt("TUND_MAX_PINNED_PER_USER", 0),
+  },
+  {
+    key: "custom_domains",
+    group: "Limits",
+    label: "Custom domains",
+    help: "Let accounts bring their own domains. Off: only admins and accounts you turn it on for under Users can add and use them. Turning it off disconnects custom-domain tunnels of accounts without it.",
+    kind: "bool",
+    env: "TUND_CUSTOM_DOMAINS",
+    fallback: () => envBool("TUND_CUSTOM_DOMAINS", false),
   },
   {
     key: "limit_domains",

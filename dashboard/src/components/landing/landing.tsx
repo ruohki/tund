@@ -70,9 +70,20 @@ function TerminalStill({ url, dashboardUrl }: { url: string; dashboardUrl: strin
   );
 }
 
-function Feature({ title, children, example }: { title: string; children: ReactNode; example: ReactNode }) {
+function Feature({
+  title,
+  children,
+  example,
+  wide = false,
+}: {
+  title: string;
+  children: ReactNode;
+  example: ReactNode;
+  /** Spans both columns (keeps the grid even when a feature is off). */
+  wide?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-4 bg-surface p-6">
+    <div className={`flex flex-col gap-4 bg-surface p-6${wide ? " md:col-span-2" : ""}`}>
       <div>
         <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-ink">{title}</h3>
         <p className="mt-1.5 max-w-[46ch] text-[14px] text-ink-2">{children}</p>
@@ -87,7 +98,7 @@ const exampleBox = "rounded-md border border-line bg-surface-2 px-3 py-2 font-mo
 export async function Landing() {
   const cfg = publicConfig();
   const site = await siteInfo();
-  const { browser_warning: browserWarning } = await getSettings();
+  const { browser_warning: browserWarning, custom_domains: customDomains } = await getSettings();
   const url = `${cfg.scheme}://brave-otter-4821.${cfg.baseDomain}${cfg.portSuffix}`;
   const host = url.replace(/^https?:\/\//, "");
 
@@ -105,7 +116,7 @@ export async function Landing() {
       "Public HTTPS URL for a local port",
       "Request inspector with replay",
       "Password and single sign-on protection",
-      "Custom domains",
+      ...(customDomains ? ["Custom domains"] : []),
       "TCP and TLS tunnels",
     ],
   };
@@ -217,6 +228,7 @@ export async function Landing() {
             </Feature>
             <Feature
               title="Private when it needs to be"
+              wide={!customDomains}
               example={
                 <div className="flex flex-col gap-1.5">
                   <p className={exampleBox}>tund http 3000 --password &apos;correct horse&apos;</p>
@@ -230,13 +242,15 @@ export async function Landing() {
                 ? " Public links also get abuse protection: browsers see a one-time warning before an unprotected tunnel."
                 : null}
             </Feature>
-            <Feature
-              title="Your own domains"
-              example={<p className={exampleBox}>tund http 3000 --domain api.example.com</p>}
-            >
-              Point a domain, or a whole wildcard, at tund and serve tunnels from it. Certificates are issued
-              automatically once DNS is in place.
-            </Feature>
+            {customDomains ? (
+              <Feature
+                title="Your own domains"
+                example={<p className={exampleBox}>tund http 3000 --domain api.example.com</p>}
+              >
+                Point a domain, or a whole wildcard, at tund and serve tunnels from it. Certificates are issued
+                automatically once DNS is in place.
+              </Feature>
+            ) : null}
           </div>
         </section>
 

@@ -305,6 +305,7 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 | --- | --- | --- | --- |
 | `signup_mode` | `"open"` \| `"invite"` \| `"closed"` | `TUND_ALLOW_SIGNUP` true → open, else closed | dashboard (invite = only with a valid team invite link; the very first account is always allowed) |
 | `require_email_verification` | bool | false | dashboard (new accounts must click the emailed link before approving CLI logins / creating tokens) + server (tokens of unverified accounts get `403 {"error":"verify your email address first …"}`); only effective while SMTP is configured |
+| `custom_domains` | bool | `TUND_CUSTOM_DOMAINS` (false) | server (binding a hostname outside the base domain) + dashboard (adding custom domains, UI copy): whether accounts may use custom domains. `users.custom_domains` (migration 0013; NULL = this setting, where admins count as on; true/false) overrides it per account. The server re-checks live custom-domain tunnels on `settings` and `user_updated` and ends them with `custom domains are not enabled for your account …`. `untrusted_custom_domains` still applies on top for non-trusted accounts |
 | `limit_tunnels`, `limit_pinned`, `limit_domains`, `limit_teams` | int (0 = unlimited) | `TUND_MAX_TUNNELS_PER_USER`, `…_PINNED_…`, `…_DOMAINS_…`, `…_TEAMS_…` | server (tunnels, pinned) + dashboard (pinned, domains, teams) |
 | `auto_pin` | bool | `TUND_AUTO_PIN` | server |
 | `browser_warning` | bool | `TUND_BROWSER_WARNING` | server + dashboard badges |
@@ -462,7 +463,7 @@ API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests
 
 ### Dashboard
 
-Public `/report?host=` form (category, URL, description, optional email; Turnstile when configured; rate limited) linked from the warning page, landing footer and blocked page. `/admin/abuse`: queue with filters; actions stop tunnel, block hostname, disable account, trust/untrust, flag/unflag, resolve/dismiss with a note (all audited). `/terms` and `/acceptable-use` pages (generic defaults with `instance_name`, editable in settings as markdown), accepted via a checkbox at sign-up. Custom-domain creation respects `untrusted_custom_domains`.
+Public `/report?host=` form (category, URL, description, optional email; Turnstile when configured; rate limited) linked from the warning page, landing footer and blocked page. `/admin/abuse`: queue with filters; actions stop tunnel, block hostname, disable account, trust/untrust, flag/unflag, resolve/dismiss with a note (all audited). `/terms` and `/acceptable-use` pages (generic defaults with `instance_name`, editable in settings as markdown), accepted via a checkbox at sign-up. Custom-domain creation respects `custom_domains` (and the per-account override) first, then `untrusted_custom_domains`.
 
 ### Custom domain review
 

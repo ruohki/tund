@@ -21,8 +21,9 @@ type Runtime struct {
 	CaptureMaxBody           int
 	RequireEmailVerification bool
 	SMTPConfigured           bool
-	BandwidthKbps            int // per account and direction
-	TransferGB               int // per account and month
+	BandwidthKbps            int  // per account and direction
+	TransferGB               int  // per account and month
+	CustomDomains            bool // users.custom_domains overrides it
 
 	// Abuse protection
 	UntrustedCustomDomains string // allow | review | deny
@@ -50,6 +51,7 @@ func defaultRuntime(c *Config) *Runtime {
 		CaptureMaxBody:    c.CaptureMaxBody,
 		BandwidthKbps:     c.BandwidthKbps,
 		TransferGB:        c.TransferGB,
+		CustomDomains:     c.CustomDomains,
 
 		UntrustedCustomDomains: c.UntrustedCustomDomains,
 		WarnCustomDomains:      true,
@@ -82,6 +84,8 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			ok = setInt(raw, &r.BandwidthKbps, 0, 100_000_000)
 		case "limit_transfer_gb":
 			ok = setInt(raw, &r.TransferGB, 0, 1_000_000)
+		case "custom_domains":
+			ok = json.Unmarshal(raw, &r.CustomDomains) == nil
 		case "untrusted_custom_domains":
 			var b bool
 			var str string

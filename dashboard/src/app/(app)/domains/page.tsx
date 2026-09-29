@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Globe, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
 import { loadDomainItems, myTeamDomains } from "@/lib/domain-items";
 import { domainUsage } from "@/lib/static-hostnames";
@@ -27,7 +28,7 @@ function Usage({ used, limit, noun, label }: { used: number; limit: number | nul
 export default async function DomainsPage() {
   const user = await requireUser();
   const cfg = publicConfig();
-  const [items, providers, pinned, custom, teamDomains, tcp, tcpPorts] = await Promise.all([
+  const [items, providers, pinned, custom, teamDomains, tcp, tcpPorts, customOn] = await Promise.all([
     loadDomainItems(user.id, null),
     providerOptions(user.id, null),
     domainUsage(user, "subdomain"),
@@ -35,6 +36,7 @@ export default async function DomainsPage() {
     myTeamDomains(user.id),
     tcpConfig(),
     listTcpReservations(user.id, { teamId: null }),
+    customDomainsEnabled(user),
   ]);
   const statics = items.filter((i) => i.kind === "subdomain");
   const customs = items.filter((i) => i.kind === "custom");
@@ -43,8 +45,9 @@ export default async function DomainsPage() {
     pinned.limit !== null && pinned.used >= pinned.limit
       ? `You're using all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames and TCP ports) your account can have. Release one to add another.`
       : null;
-  const customFull =
-    custom.limit !== null && custom.used >= custom.limit
+  const customFull = !customOn
+    ? CUSTOM_DOMAINS_OFF
+    : custom.limit !== null && custom.used >= custom.limit
       ? `You're using all ${custom.limit} custom ${custom.limit === 1 ? "domain" : "domains"} your account can have. Remove one to add another.`
       : null;
 

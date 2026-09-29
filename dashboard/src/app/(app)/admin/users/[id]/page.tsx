@@ -8,6 +8,7 @@ import { formatBytes, formatDateTime, formatKbps, formatNumber, formatTransfer, 
 import { effectiveLimits, monthUsage } from "@/lib/usage";
 import { getSettings } from "@/lib/settings";
 import { LimitsForm } from "./limits-form";
+import { CustomDomainsForm } from "./custom-domains-form";
 import { smtpConfigured } from "@/lib/mail";
 import { listTunnels } from "@/lib/metrics";
 import { isUuid } from "@/lib/requests";
@@ -214,6 +215,14 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
       </Panel>
 
       <Panel title="Static hostnames and custom domains">
+        <div className="border-b border-line p-4">
+          <p className="mb-2 text-[13.5px] font-medium text-ink">Custom domains</p>
+          <CustomDomainsForm
+            id={u.id}
+            value={u.custom_domains ?? null}
+            inheritLabel={u.is_admin ? "on for admins" : settings.custom_domains ? "on" : "off"}
+          />
+        </div>
         {domains.length ? (
           <ul className="divide-y divide-line">
             {domains.map((d) => (

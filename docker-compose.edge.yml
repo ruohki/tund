@@ -34,6 +34,7 @@ services:
       TUND_DNS_API_TOKEN: ${TUND_DNS_API_TOKEN:-}
       TUND_TCP_PORTS: ${TUND_TCP_PORTS:-}
       TUND_TCP_HOST: ${TUND_TCP_HOST:-}
+      TUND_CUSTOM_DOMAINS: ${TUND_CUSTOM_DOMAINS:-false}   # same default as the control node
       TZ: ${TZ:-UTC}
     volumes:
       - tund-data:/data

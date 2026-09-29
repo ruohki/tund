@@ -42,11 +42,21 @@ export async function labelRefusal(user: User, label: string): Promise<string | 
 }
 
 /**
- * Why a non-trusted account may not add this custom domain, or null. The edge
- * refuses to bind these for non-trusted accounts even when approved, so they're
- * refused up front.
+ * Whether the account may use custom domains: its override, else the instance
+ * setting (admins don't need it). Mirrors customDomainsEnabled in the edge.
+ */
+export async function customDomainsEnabled(user: Pick<User, "isAdmin" | "customDomains">): Promise<boolean> {
+  return user.customDomains ?? (user.isAdmin || (await getSettings()).custom_domains);
+}
+
+export const CUSTOM_DOMAINS_OFF = "Custom domains aren't enabled for your account on this server. Ask an administrator to turn them on.";
+
+/**
+ * Why this account may not add this custom domain, or null. The edge refuses
+ * to bind these even when approved, so they're refused up front.
  */
 export async function customDomainRefusal(user: User, hostname: string): Promise<string | null> {
+  if (!(await customDomainsEnabled(user))) return CUSTOM_DOMAINS_OFF;
   if (isTrusted(user)) return null;
   const s = await getSettings();
   if (s.untrusted_custom_domains === "deny") {

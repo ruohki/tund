@@ -313,3 +313,20 @@ export async function setUserLimitsAction(_: FormState, fd: FormData): Promise<F
   refresh();
   return { ok: "Limits saved. They apply to live tunnels right away." };
 }
+
+// --- custom domains override -----------------------------------------------------
+
+/** Per-user custom domains: the instance setting (NULL), on or off. Turning it off disconnects custom-domain tunnels. */
+export async function setUserCustomDomainsAction(_: FormState, fd: FormData): Promise<FormState> {
+  const admin = await requireAdmin();
+  const u = await targetUser(str(fd, "id"));
+  if (!u) return { error: "Unknown user." };
+  const mode = str(fd, "custom_domains");
+  if (mode !== "inherit" && mode !== "on" && mode !== "off") return { error: "Choose default, on or off." };
+  const value = mode === "inherit" ? null : mode === "on";
+  await db()`update users set custom_domains = ${value} where id = ${u.id}`;
+  await notify("tund_config", { kind: "user_updated", id: u.id });
+  await audit(actorOf(admin), "user.custom_domains", u.email, { custom_domains: value });
+  refresh();
+  return { ok: "Saved. It applies to live tunnels right away." };
+}

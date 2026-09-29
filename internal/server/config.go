@@ -49,6 +49,7 @@ type Config struct {
 	MaxDomainsPerUser          int    // enforced by the dashboard; reported by the API
 	MaxTeamsPerUser            int    // enforced by the dashboard
 	BandwidthKbps              int    // per account and direction; 0 = unlimited
+	CustomDomains              bool   // instance default; users.custom_domains overrides it
 	UntrustedCustomDomains     string // allow | review | deny
 	UntrustedTCP, UntrustedTLS bool
 	SafeBrowsingKey            string
@@ -189,6 +190,9 @@ func LoadConfig() (*Config, error) {
 		c.UntrustedCustomDomains = "review"
 	default:
 		errs = append(errs, fmt.Errorf("TUND_UNTRUSTED_CUSTOM_DOMAINS must be allow, review or deny (got %q)", v))
+	}
+	if c.CustomDomains, err = envBool("TUND_CUSTOM_DOMAINS", false); err != nil {
+		errs = append(errs, err)
 	}
 	for key, dst := range map[string]*bool{
 		"TUND_UNTRUSTED_TCP": &c.UntrustedTCP,

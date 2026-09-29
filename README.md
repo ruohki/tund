@@ -183,6 +183,8 @@ A static hostname is a name on the hosted domain (`myapp.tund.io`) pinned to you
 
 ## Custom domains
 
+Custom domains are off by default. Turn them on for everyone under *Admin → Settings* (*Custom domains*, env default `TUND_CUSTOM_DOMAINS`), or per account under *Admin → Users* (*Default* / *On* / *Off*; the per-account choice wins, and admins have them unless set to *Off*). Turning them off disconnects the affected custom-domain tunnels right away.
+
 Add the domain in the dashboard. Create the TXT record it shows (`_tund-challenge.<domain>`) and point the domain at the server with an A record to the server IP or a CNAME to the dashboard host. Then click *Verify*. Wildcards like `*.dev.example.com` let the client use any `<name>.dev.example.com`.
 
 ## Edge nodes (global)

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { customDomainsEnabled } from "@/lib/abuse";
 import { defaultStaticHostname } from "@/lib/static-hostnames";
 import { config, publicConfig } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
@@ -25,10 +26,11 @@ const ARCH_LABEL: Record<string, string> = { amd64: "x86-64", arm64: "ARM64" };
 export default async function GetStartedPage() {
   const user = await requireUser();
   const cfg = publicConfig();
-  const [defaultHost, tcp, verifyRequired] = await Promise.all([
+  const [defaultHost, tcp, verifyRequired, customDomains] = await Promise.all([
     defaultStaticHostname(user.id),
     tcpConfig(),
     verificationRequired(),
+    customDomainsEnabled(user),
   ]);
   const mustVerify = !user.emailVerified && verifyRequired;
   const staticUrl = defaultHost ? config().publicUrl(defaultHost) : null;
@@ -38,7 +40,7 @@ export default async function GetStartedPage() {
     ["--pin", "Keep the hostname of this run as one of your static hostnames."],
     ["--random", "Use a throwaway hostname for this run only."],
     ["--allow-ip <list>", "Only accept visitors from these IPs or CIDRs, e.g. 203.0.113.7,10.0.0.0/8. Works for HTTP, TCP and TLS."],
-    ["--domain <host>", "Use a custom domain you verified under Domains."],
+    ...(customDomains ? ([["--domain <host>", "Use a custom domain you verified under Domains."]] as [string, string][]) : []),
     ["--name <name>", "Label shown in the dashboard. Defaults to http-<port>."],
     ["--host-header rewrite", "Send Host: localhost:<port> upstream, for dev servers that reject unknown hosts."],
     ["--password <secret>", "Ask visitors for a password before they reach your service."],
@@ -58,7 +60,7 @@ export default async function GetStartedPage() {
       password: correct-horse
   admin:
     addr: https://localhost:8443
-    domain: admin.example.com
+    ${customDomains ? "domain: admin.example.com" : "subdomain: admin"}
     auth:
       oidc: company
       allow: ["@example.com"]`;
@@ -159,10 +161,11 @@ export default async function GetStartedPage() {
           bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
         >
           <p>Forward TLS connections to a local service that has its own certificate:</p>
-          <Command>tund tls 8443 --domain secure.example.com</Command>
+          <Command>{customDomains ? "tund tls 8443 --domain secure.example.com" : "tund tls 8443 --subdomain secure"}</Command>
           <p>
-            Visitors see your service&apos;s certificate, so this fits best on a verified custom domain with a certificate
-            you own. On a {cfg.baseDomain} hostname, let the client terminate TLS instead:
+            Visitors see your service&apos;s certificate
+            {customDomains ? ", so this fits best on a verified custom domain with a certificate you own" : null}. On a{" "}
+            {cfg.baseDomain} hostname, let the client terminate TLS instead:
           </p>
           <Command>tund tls 8080 --terminate-cert cert.pem --terminate-key key.pem</Command>
           <p>

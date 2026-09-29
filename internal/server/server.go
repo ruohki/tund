@@ -321,6 +321,7 @@ func (s *Server) onConfigChange(payload string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		s.refreshMeters(ctx, ev.ID)
+		s.recheckCustomDomains(ctx, ev.ID)
 		return
 	case "blocked_hosts":
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -336,6 +337,7 @@ func (s *Server) onConfigChange(payload string) {
 			logf("reload settings: %v", err)
 		} else {
 			logf("settings reloaded")
+			s.recheckCustomDomains(ctx, "")
 		}
 		return
 	}

@@ -608,6 +608,11 @@ func (s *Server) resolveExplicit(ctx context.Context, userID string, b *protocol
 			if !validHostname(host) {
 				return "", nil, bindError("invalid hostname " + host)
 			}
+			if ok, err := s.customDomainsAllowed(ctx, userID); err != nil {
+				return "", nil, err
+			} else if !ok {
+				return "", nil, bindError(errCustomDomainsOff)
+			}
 			d, err := s.store.ResolveDomain(ctx, host)
 			if errors.Is(err, errNotFound) || (err == nil && !s.canUseDomain(ctx, d, userID)) {
 				return "", nil, bindError(host + " is not one of your or your teams' domains; add and verify it in the dashboard first")
