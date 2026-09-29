@@ -36,6 +36,8 @@ jobs:
               -ldflags "-s -w -X tund/internal/client.Version=$version -X tund/internal/client.DefaultServer=$DEFAULT_SERVER" \
               -o "dist/tund-$os-$arch$ext" ./cmd/tund
           done; done
+          # The newest release for `tund update` and the server's update hint.
+          echo "$version" > dist/version.txt
           cd dist && sha256sum tund-* > checksums.txt && cat checksums.txt
       - name: Publish release
         env:

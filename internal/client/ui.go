@@ -33,6 +33,8 @@ type Display struct {
 	nameW   int
 	stopped bool
 	said    map[string]bool
+	update  string // newer release announced by the server
+	header  bool   // the session summary has been printed
 }
 
 // NewDisplay picks the output style. forceLog selects plain log lines even on a terminal.
@@ -173,6 +175,24 @@ func (d *Display) Warn(msg string) {
 	d.println(d.c(yellow, "warning: "+msg))
 }
 
+// UpdateAvailable notes a newer client release: a row in the session summary,
+// or a line of its own once the summary is out.
+func (d *Display) UpdateAvailable(version string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.update == version {
+		return // announced again after a reconnect
+	}
+	d.update = version
+	if !d.pretty {
+		d.logf("update available", "version", version, "current", Version, "run", "tund update")
+		return
+	}
+	if d.header {
+		d.println(d.c(yellow, "tund "+version+" is available") + d.c(dim, " · update with: tund update"))
+	}
+}
+
 // Info prints a neutral message.
 func (d *Display) Info(msg string) {
 	d.mu.Lock()
@@ -299,6 +319,10 @@ func (d *Display) Header(w welcome, ts []tunnelView) {
 		version += d.c(dim, " (server "+w.serverVersion+")")
 	}
 	d.println(d.row("Version", version))
+	if d.update != "" {
+		d.println(d.row("Update", d.c(yellow, d.update+" available")+d.c(dim, " · run tund update")))
+	}
+	d.header = true
 	if len(online) == 1 {
 		d.println(d.row("Inspector", inspectURL(w.dashboardURL, online[0].inspectHost())))
 	} else {

@@ -127,6 +127,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		return
 	}
+	if n := s.updateNotice(as.ClientVersion, as.ClientOS); n != nil {
+		as.ctrl.Send(*n)
+	}
 
 	for {
 		m, err := as.ctrl.Recv()

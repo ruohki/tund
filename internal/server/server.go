@@ -55,6 +55,8 @@ type Server struct {
 	cluster   *cluster // nil in single-node mode
 	startedAt time.Time
 
+	latestClientVersion atomic.Pointer[string] // newest client release, see clientupdate.go
+
 	oidcMu    sync.Mutex
 	oidcCache map[string]oidcDiscovery
 }
@@ -414,6 +416,7 @@ func (s *Server) Run(ctx context.Context) error {
 	recDone := make(chan struct{})
 	go func() { s.recorder.Run(bg); close(recDone) }()
 	go s.store.Listen(bg, "tund_config", s.onConfigChange)
+	go s.latestClientLoop(bg)
 	go s.meterLoop(bg)
 	go s.safeBrowsingLoop(bg)
 	go s.phishLoop(bg)

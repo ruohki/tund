@@ -18,6 +18,7 @@ type observer interface {
 	Reconnecting(err error, delay time.Duration)
 	Stopped()
 	Warn(msg string)
+	UpdateAvailable(version string)
 	Header(w welcome, ts []tunnelView)
 	TunnelOnline(t tunnelView)
 	TunnelFailed(t tunnelView)
@@ -94,6 +95,9 @@ func (o eventObserver) Warn(msg string)           { o.fn(Event{Kind: EventWarnin
 func (o eventObserver) TunnelOnline(t tunnelView) { o.fn(o.tunnelEvent(EventBound, t)) }
 func (o eventObserver) TunnelFailed(t tunnelView) { o.fn(o.tunnelEvent(EventFailed, t)) }
 func (o eventObserver) TunnelClosed(t tunnelView) { o.fn(o.tunnelEvent(EventClosed, t)) }
+func (o eventObserver) UpdateAvailable(v string) {
+	o.Warn("tund " + v + " is available (this is " + Version + "); update with: tund update")
+}
 func (o eventObserver) Header(w welcome, ts []tunnelView) {
 	for _, t := range ts {
 		switch {

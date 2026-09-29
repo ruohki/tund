@@ -43,7 +43,9 @@ const (
 	// TypeConnection reports a finished TCP/TLS connection (for the CLI log).
 	TypeConnection = "connection"
 	// TypeNotice is an informational message for the user (Error holds the
-	// text), e.g. an exhausted transfer quota. The session stays up.
+	// text), e.g. an exhausted transfer quota. The session stays up. With
+	// UpdateVersion set it announces a newer client release; clients that know
+	// the field show their own hint, older ones print Error.
 	TypeNotice = "notice"
 )
 
@@ -96,6 +98,9 @@ type Message struct {
 
 	// bind_error / closed / error
 	Error string `json:"error,omitempty"`
+
+	// notice: the newest client release, when this client is older
+	UpdateVersion string `json:"update_version,omitempty"`
 }
 
 // Bind asks the server to route a public hostname (or TCP port) to a local address.

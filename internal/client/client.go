@@ -559,7 +559,10 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				serverErr = "server: " + m.Error
 			case protocol.TypeNotice:
 				// Informational (e.g. transfer quota used up); the session stays up.
-				if m.Error != "" {
+				switch {
+				case m.UpdateVersion != "":
+					c.ui.UpdateAvailable(m.UpdateVersion)
+				case m.Error != "":
 					c.ui.Warn(m.Error)
 				}
 			}

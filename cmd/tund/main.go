@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -17,10 +16,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"tund/internal/client"
-	"tund/internal/protocol"
 )
 
 func main() {
+	client.CleanupOldExecutable()
 	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "tund: "+err.Error())
 		os.Exit(1)
@@ -115,7 +114,7 @@ Default server: ` + orNone(client.DefaultServer),
 	root.PersistentFlags().StringVar(&g.configPath, "config", "", "config file (default: "+defaultPathHint()+")")
 	root.PersistentFlags().BoolVar(&g.logMode, "log", false, "print plain log lines instead of the interactive view")
 
-	root.AddCommand(newHTTPCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newVersionCmd())
+	root.AddCommand(newHTTPCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newUpdateCmd(g), newVersionCmd(g))
 	return root
 }
 
@@ -352,17 +351,6 @@ func runTunnels(g *globals, cfg *client.Config, cfgPath string, specs []client.T
 
 func notLoggedInError(s settings) error {
 	return fmt.Errorf("not logged in to %s\n\nRun `%s` in a terminal, or set TUND_AUTHTOKEN to a token from the dashboard (%s/authtokens).", s.server, loginHint(s), s.server)
-}
-
-func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print the client version",
-		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("tund %s (%s/%s, protocol %s)\n", client.Version, runtime.GOOS, runtime.GOARCH, protocol.Version)
-		},
-	}
 }
 
 func orNone(s string) string {

@@ -142,7 +142,7 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request) {
 		s.listDownloads(w, r)
 		return
 	}
-	if !downloadName.MatchString(name) && name != "checksums.txt" {
+	if !downloadName.MatchString(name) && name != "checksums.txt" && name != "version.txt" {
 		http.NotFound(w, r)
 		return
 	}

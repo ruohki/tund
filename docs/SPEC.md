@@ -29,7 +29,8 @@ Go module path: `tund`.
 * `TUND_BASE_DOMAIN` e.g. `tund.example.com`. Tunnels get `<label>.<base>`; one label only.
 * `TUND_DASHBOARD_HOST` default `dashboard.<base>`. Served by the edge:
   * `/_tund/ws` — client control connection (WebSocket)
-  * `/_tund/install.sh`, `/_tund/install.ps1`, `/_tund/downloads/tund-<os>-<arch>[.exe]`
+  * `/_tund/install.sh`, `/_tund/install.ps1`, `/_tund/downloads/tund-<os>-<arch>[.exe]`, `…/checksums.txt`, `…/version.txt` (the newest client release, e.g. `0.4.0`; published with every release)
+  * Client updates: the server reads `version.txt` from `TUND_DOWNLOADS_DIR` or `TUND_DOWNLOAD_BASE_URL` at start and hourly. A client connecting with an older release version (`X-Tund-Client-Version`) gets `{"type":"notice","update_version":"<latest>","error":"<text with the installer one-liner>"}` right after `welcome`; clients that know `update_version` show their own hint, older ones print `error`. Development builds (`dev`, `main-…`) never get it. `tund update` downloads `tund-<os>-<arch>` through these endpoints, checks it against `checksums.txt`, runs `<new> version` once and renames it over the running executable (Windows: the old one becomes `tund.exe.old`, removed on a later run).
   * `/_tund/oidc/start`, `/_tund/oidc/callback` — OIDC for protected tunnels
   * everything else → reverse proxy to `TUND_DASHBOARD_UPSTREAM` (Next.js)
 * Reserved labels that can never be tunnel subdomains: `dashboard www api admin app connect edge tund mail smtp imap ftp ns ns1 ns2 status docs static assets cdn` plus the first label of the dashboard host.

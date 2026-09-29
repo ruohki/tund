@@ -66,7 +66,10 @@ irm https://tund.io/install.ps1 | iex
 tund http 3000                              # cloud; logs you in on first run
 tund login https://tund.example.com         # or: use your self-hosted instance from now on
 tund logout                                 # forget token + server (back to the cloud)
+tund update                                 # install the latest release
 ```
+
+When a newer release is out, `tund http` shows an *Update* line (older clients print a warning with the installer command). `tund update` downloads the new binary through your server, verifies its checksum and replaces itself; use `sudo tund update` if it lives in a root-owned directory like `/usr/local/bin`.
 
 `tund login` opens the dashboard in your browser: click *Approve* and the browser hands the login straight back to the CLI (a one-time code on a `127.0.0.1` callback), with nothing to copy. Over SSH, without a display or with `--no-browser`, it shows a short code to approve on any device instead. Either way the CLI generates its token locally and only the token's hash is ever sent to the server. For CI and headless machines, create a token under *Auth tokens* and use `tund config add-authtoken <token>` or `TUND_AUTHTOKEN`. The installer served by a self-hosted instance points the CLI at that instance automatically.
 
@@ -215,7 +218,7 @@ A public tunnel service will be used for phishing. tund layers several defences:
 
 ## Releases
 
-Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt`, and multi-arch images to GHCR (`:<version>`, `:latest`). Pushes to `main` publish `:main` images. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
+Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt` and `version.txt`, and multi-arch images to GHCR (`:<version>`, `:latest`). Pushes to `main` publish `:main` images. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
 
 ## Development
 
