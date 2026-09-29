@@ -28,6 +28,8 @@ export function formatUserCodeInput(input: string): string {
 
 export type DeviceRequestView = {
   userCode: string;
+  /** The terminal listens on 127.0.0.1: approving redirects there, no code to compare. */
+  callback: boolean;
   clientHostname: string;
   clientOs: string;
   clientIp: string;
@@ -43,4 +45,6 @@ export type DeviceOutcome =
   | { state: "used" }
   | { state: "expired" }
   | { state: "unknown" }
-  | { state: "error"; message: string };
+  | { state: "error"; message: string }
+  /** Approved a callback login: send the browser to the terminal's listener. */
+  | { state: "redirect"; url: string };

@@ -42,7 +42,7 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 	if token == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing authtoken; run `tund config add-authtoken <token>`")
+		writeJSONError(w, http.StatusUnauthorized, "missing authtoken; run `tund login` (or set TUND_AUTHTOKEN in CI)")
 		return
 	}
 	acct, err := s.store.AuthenticateToken(r.Context(), token)

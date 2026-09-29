@@ -1012,13 +1012,20 @@ type DeviceCodeRow struct {
 	DeviceCodeHash, UserCode, TokenHash, TokenPrefix string
 	ClientHostname, ClientOS, ClientIP               string
 	ExpiresAt                                        time.Time
+	CallbackPort                                     int // 0: plain device flow
+	CallbackState                                    string
 }
 
 func (s *Store) CreateDeviceCode(ctx context.Context, r DeviceCodeRow) error {
+	var port *int
+	var state *string
+	if r.CallbackPort != 0 {
+		port, state = &r.CallbackPort, &r.CallbackState
+	}
 	_, err := s.pool.Exec(ctx, `
-		insert into device_codes (device_code_hash, user_code, token_hash, token_prefix, client_hostname, client_os, client_ip, expires_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		r.DeviceCodeHash, r.UserCode, r.TokenHash, r.TokenPrefix, r.ClientHostname, r.ClientOS, r.ClientIP, r.ExpiresAt)
+		insert into device_codes (device_code_hash, user_code, token_hash, token_prefix, client_hostname, client_os, client_ip, expires_at, callback_port, callback_state)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		r.DeviceCodeHash, r.UserCode, r.TokenHash, r.TokenPrefix, r.ClientHostname, r.ClientOS, r.ClientIP, r.ExpiresAt, port, state)
 	return err
 }
 
@@ -1042,7 +1049,9 @@ func (s *Store) PollDeviceCode(ctx context.Context, deviceCodeHash string) (*Dev
 	if err != nil {
 		return nil, err
 	}
-	if p.Status != "pending" || p.Expired {
+	// 'authorized' (a loopback login approved in the browser, waiting for the
+	// CLI to redeem its callback code) still reads as pending here.
+	if (p.Status != "pending" && p.Status != "authorized") || p.Expired {
 		if p.Status == "approved" {
 			p.Expired = false // approved in time; the token already exists
 		}
@@ -1051,6 +1060,69 @@ func (s *Store) PollDeviceCode(ctx context.Context, deviceCodeHash string) (*Dev
 		}
 	}
 	return &p, nil
+}
+
+var (
+	errDeviceExpired  = errors.New("device code expired")
+	errDeviceDenied   = errors.New("device code denied")
+	errDeviceCallback = errors.New("wrong or stale callback code")
+)
+
+// RedeemDeviceCallback creates the authtoken of a loopback login that was
+// authorized in the dashboard, given the callback code the browser brought
+// to the CLI, and returns the account's email. Redeeming the same code again
+// succeeds without side effects (a reloaded callback page); the row itself is
+// left for the CLI's poll or Prune.
+func (s *Store) RedeemDeviceCallback(ctx context.Context, deviceCodeHash, callbackCodeHash string) (string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+	var (
+		id, status, codeHash, userID, email string
+		tokenHash, tokenPrefix, hostname    string
+		expired, disabled                   bool
+	)
+	err = tx.QueryRow(ctx, `
+		select d.id::text, d.status, coalesce(d.callback_code_hash, ''), coalesce(d.user_id::text, ''), coalesce(u.email, ''),
+		       d.token_hash, d.token_prefix, d.client_hostname, d.expires_at < now(), u.disabled_at is not null
+		from device_codes d left join users u on u.id = d.user_id
+		where d.device_code_hash = $1
+		for update of d`, deviceCodeHash).
+		Scan(&id, &status, &codeHash, &userID, &email, &tokenHash, &tokenPrefix, &hostname, &expired, &disabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", errNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case status == "denied" || disabled:
+		return "", errDeviceDenied
+	case codeHash == "" || codeHash != callbackCodeHash:
+		return "", errDeviceCallback
+	case status == "approved":
+		return email, nil
+	case status != "authorized":
+		return "", errDeviceCallback
+	case expired:
+		return "", errDeviceExpired
+	}
+	name := "CLI on " + hostname
+	if hostname == "" {
+		name = "CLI on unknown host"
+	}
+	var tokenID string
+	if err := tx.QueryRow(ctx, `
+		insert into authtokens (user_id, name, token_hash, token_prefix) values ($1, $2, $3, $4) returning id::text`,
+		userID, truncate(name, 80), tokenHash, tokenPrefix).Scan(&tokenID); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `update device_codes set status = 'approved', authtoken_id = $2 where id = $1`, id, tokenID); err != nil {
+		return "", err
+	}
+	return email, tx.Commit(ctx)
 }
 
 // Listen runs fn for every notification on channel until ctx is done,

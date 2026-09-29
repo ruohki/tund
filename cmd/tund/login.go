@@ -20,16 +20,18 @@ func newLoginCmd(g *globals) *cobra.Command {
 		Short: "Log in through your browser and save an authtoken",
 		Long: `Log in through your browser and save an authtoken for this machine.
 
-tund shows a short code and opens the server's dashboard, where you check
-that the code matches and approve. The token is created on this machine;
-only its hash is sent to the server.
+tund opens the server's dashboard in your browser; click Approve and the
+browser hands the login back to tund on this machine. Without a local browser
+(--no-browser, SSH, no display) tund shows a short code to approve on any
+device instead. The token is created on this machine; only its hash is sent
+to the server.
 
 With a server URL, tund logs in to that (self-hosted) server and remembers
 it, so every later command uses it. Without one it uses the current server
 (--server, TUND_SERVER, the config file, or the default ` + orNone(client.DefaultServer) + `).`,
 		Example: `  tund login                                   # log in to the current server
   tund login https://tund.example.com          # log in to a self-hosted server and use it from now on
-  tund login --no-browser                      # just print the link (e.g. over SSH)
+  tund login --no-browser                      # approve with a code on another device (e.g. over SSH)
   tund login --authtoken tund_…                # save an existing token (scripts, CI)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -80,7 +82,7 @@ it, so every later command uses it. Without one it uses the current server
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "don't open a browser, only print the link")
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "don't open a browser; show a code to approve on any device")
 	return cmd
 }
 
@@ -130,7 +132,7 @@ The token stays valid on the server until you revoke it in the dashboard.`,
 	}
 }
 
-// loginAndSave runs the device flow and stores the new token (plus the server,
+// loginAndSave runs the browser/device login and stores the new token (plus the server,
 // unless it is the built-in default) in the config file.
 func loginAndSave(ctx context.Context, cfg *client.Config, cfgPath string, s settings, d *client.Display, noBrowser bool) (string, error) {
 	res, err := client.Login(ctx, client.LoginOptions{Server: s.server, NoBrowser: noBrowser, Display: d})

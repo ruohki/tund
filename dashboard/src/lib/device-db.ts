@@ -1,11 +1,12 @@
 import "server-only";
-import type { User } from "./auth";
+import { randomBytes } from "node:crypto";
+import { sha256, type User } from "./auth";
 import { db } from "./db";
 import { normalizeUserCode, type DeviceOutcome } from "./device";
 
 type Row = {
   id: string;
-  status: "pending" | "approved" | "denied";
+  status: "pending" | "authorized" | "approved" | "denied";
   user_id: string | null;
   token_hash: string;
   token_prefix: string;
@@ -14,6 +15,8 @@ type Row = {
   client_ip: string;
   created_at: Date;
   expires_at: Date;
+  callback_port: number | null;
+  callback_state: string | null;
   live: boolean;
 };
 
@@ -26,6 +29,7 @@ export async function lookupDeviceCode(user: User, code: string): Promise<Device
     state: "pending",
     request: {
       userCode: code,
+      callback: row.callback_port !== null,
       clientHostname: row.client_hostname,
       clientOs: row.client_os,
       clientIp: row.client_ip,
@@ -37,12 +41,19 @@ export async function lookupDeviceCode(user: User, code: string): Promise<Device
 
 function settled(row: Row, user: User): DeviceOutcome | null {
   if (row.status === "approved") return row.user_id === user.id ? { state: "approved", email: user.email } : { state: "used" };
+  // Authorized but not yet redeemed by the terminal: whoever authorized it may
+  // approve again (the redirect failed, or the tab was reloaded).
+  if (row.status === "authorized" && row.user_id !== user.id) return { state: "used" };
   if (row.status === "denied") return { state: "denied" };
   if (!row.live) return { state: "expired" };
   return null;
 }
 
-/** Approve or deny a pending code for `user` in one transaction (row lock on the code). */
+/**
+ * Approve or deny a pending code for `user` in one transaction (row lock on the
+ * code). Approving a callback login returns the redirect to the terminal instead
+ * of creating the token here.
+ */
 export async function decideDeviceCode(user: User, input: string, approve: boolean): Promise<DeviceOutcome> {
   const code = normalizeUserCode(input);
   if (!code) return { state: "unknown" };
@@ -57,6 +68,19 @@ export async function decideDeviceCode(user: User, input: string, approve: boole
       if (!approve) {
         await tx`update device_codes set status = 'denied' where id = ${row.id}`;
         return { state: "denied" } as const;
+      }
+      if (row.callback_port !== null) {
+        // The token is created when the terminal redeems this code, which only
+        // travels through the redirect to 127.0.0.1 on the approver's machine.
+        // A login link sent by someone else is useless to them.
+        const callbackCode = randomBytes(32).toString("base64url");
+        await tx`
+          update device_codes set status = 'authorized', user_id = ${user.id}, callback_code_hash = ${sha256(callbackCode)}
+          where id = ${row.id}`;
+        const url = new URL(`http://127.0.0.1:${row.callback_port}/callback`);
+        url.searchParams.set("state", row.callback_state ?? "");
+        url.searchParams.set("code", callbackCode);
+        return { state: "redirect", url: url.toString() } as const;
       }
       const name = `CLI on ${row.client_hostname || "unknown host"}`.slice(0, 80);
       const [token] = await tx`

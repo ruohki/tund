@@ -79,7 +79,7 @@ case ":$PATH:" in
 esac
 echo
 echo "Next steps:"
-echo "  tund config add-authtoken <token>   # from $SERVER/authtokens"
+echo "  tund login        # opens your browser to sign in"
 echo "  tund http 3000"
 `
 
@@ -112,7 +112,7 @@ if (-not (($userPath -split ';') -contains $dir)) {
 Write-Host "Installed $(& $exe version) to $exe"
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  tund config add-authtoken <token>   # from $server/authtokens"
+Write-Host "  tund login        # opens your browser to sign in"
 Write-Host "  tund http 3000"
 `
 

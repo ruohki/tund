@@ -65,6 +65,27 @@ func (d *Display) loginPrompt(server string, dc deviceCode, opened bool) {
 	d.println("")
 }
 
+// browserLoginPrompt is the callback login's prompt: approval happens in the
+// browser that was opened, nothing to compare.
+func (d *Display) browserLoginPrompt(server, link string, opened bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.pretty {
+		d.println(fmt.Sprintf("To log in to %s, open %s in a browser on this computer and approve.", server, link))
+		return
+	}
+	d.println("")
+	if opened {
+		d.println("Opened your browser to log in to " + d.c(bold, displayHost(server)) + ". Approve there and you're done.")
+		d.println(d.c(dim, "If nothing opened, visit: ") + link)
+	} else {
+		d.println("To log in to " + d.c(bold, displayHost(server)) + ", open this link in a browser on this computer:")
+		d.println("  " + d.c(bold, link))
+	}
+	d.println(d.c(dim, "Browser on another device? Press Ctrl+C and rerun tund login with --no-browser."))
+	d.println("")
+}
+
 // LoggedIn confirms a successful login.
 func (d *Display) LoggedIn(account, server, configPath string) {
 	d.mu.Lock()
@@ -87,6 +108,7 @@ type spinner struct {
 	start    time.Time
 	deadline time.Time
 	label    string
+	expiry   string // what expires: "code", "link"
 
 	mu      sync.Mutex
 	msg     string
@@ -98,8 +120,8 @@ type spinner struct {
 
 var spinFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func (d *Display) startSpinner(label string, deadline time.Time) *spinner {
-	s := &spinner{d: d, start: time.Now(), deadline: deadline, label: label, quit: make(chan struct{}), done: make(chan struct{})}
+func (d *Display) startSpinner(label, expiry string, deadline time.Time) *spinner {
+	s := &spinner{d: d, start: time.Now(), deadline: deadline, label: label, expiry: expiry, quit: make(chan struct{}), done: make(chan struct{})}
 	if !d.pretty {
 		close(s.done)
 		return s
@@ -139,7 +161,7 @@ func (s *spinner) render(frame string) {
 	styled := s.d.c(cyan, frame) + " " + s.label + "… " + s.d.c(dim, clock(time.Since(s.start)))
 	left := time.Until(s.deadline)
 	if left < 2*time.Minute {
-		extra := "  (code expires in " + clock(left) + ")"
+		extra := "  (" + s.expiry + " expires in " + clock(left) + ")"
 		plain += extra
 		styled += s.d.c(yellow, extra)
 	}

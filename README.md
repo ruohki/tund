@@ -68,7 +68,7 @@ tund login https://tund.example.com         # or: use your self-hosted instance 
 tund logout                                 # forget token + server (back to the cloud)
 ```
 
-`tund login` uses a device-authorization flow. The CLI generates its token locally, shows a code and opens the dashboard; you approve the code there, and only the token's hash is ever sent to the server. For CI and headless machines, create a token under *Auth tokens* and use `tund config add-authtoken <token>` or `TUND_AUTHTOKEN`. The installer served by a self-hosted instance points the CLI at that instance automatically.
+`tund login` opens the dashboard in your browser: click *Approve* and the browser hands the login straight back to the CLI (a one-time code on a `127.0.0.1` callback), with nothing to copy. Over SSH, without a display or with `--no-browser`, it shows a short code to approve on any device instead. Either way the CLI generates its token locally and only the token's hash is ever sent to the server. For CI and headless machines, create a token under *Auth tokens* and use `tund config add-authtoken <token>` or `TUND_AUTHTOKEN`. The installer served by a self-hosted instance points the CLI at that instance automatically.
 
 | command | |
 | --- | --- |

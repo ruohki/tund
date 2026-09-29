@@ -134,17 +134,20 @@ Every client binary talks to the hosted cloud instance by default: `tund/interna
 
 ### `tund login` — device authorization
 
-`tund login [server-url]` — with a URL it targets (and on success saves) that server, otherwise the effective server from the precedence above.
+`tund login [server-url]` — with a URL it targets (and on success saves) that server, otherwise the effective server from the precedence above. With a browser on the same machine the login finishes through a **loopback callback** (one click, nothing to compare); otherwise (`--no-browser`, SSH, Linux without a display) it is a plain device flow with a code.
 
 1. The CLI generates its authtoken locally (`tund_` + 40 hex) and calls
    `POST <server>/_tund/device/code` with JSON `{"token_hash": sha256hex(token), "token_prefix": token[:13], "client_hostname", "client_os"}`
    → `200 {"device_code", "user_code", "verification_url", "verification_url_complete", "interval", "expires_in"}`.
    `user_code` is 8 characters from `BCDFGHJKLMNPQRSTVWXZ` formatted `XXXX-XXXX`; `verification_url` is `<dashboard>/device`, `…_complete` adds `?code=<user_code>`. Codes expire after 10 minutes. `429 {"error"}` when an IP creates too many codes.
-2. The CLI prints the code and URL, opens the browser, and polls `POST <server>/_tund/device/token` `{"device_code"}` every `interval` seconds:
-   * `428 {"error":"authorization_pending"}` — keep polling
+   For a callback login the CLI first listens on `127.0.0.1:<random port>` and adds `"callback_port"` (1024–65535) and `"callback_state"` (16–128 URL-safe characters, random); the response then also carries `"callback_done_url"` (`<dashboard>/device/done`). A server that doesn't send it doesn't support callbacks, and the CLI shows the code instead.
+2. The CLI prints the code and URL (callback login: just the URL), opens the browser, and polls `POST <server>/_tund/device/token` `{"device_code"}` every `interval` seconds:
+   * `428 {"error":"authorization_pending"}` — keep polling (also while a callback login is `authorized` but not yet redeemed)
    * `200 {"status":"approved","account":"<email>"}` — save the token locally; the row is deleted
    * `403 {"error":"access_denied"}` / `410 {"error":"expired_token"}` — stop
-3. The dashboard page `/device` (login required; preserves `?code=` through login and sign-up via `next`) shows the pending request (client hostname, OS, IP, time) and asks the user to check that the code matches their terminal. **Approve** runs in one transaction: lock the pending, unexpired `device_codes` row by `user_code`; insert `authtokens (user_id, name = 'CLI on <client_hostname>', token_hash, token_prefix)`; set `status='approved', user_id, authtoken_id`. **Deny** sets `status='denied'`.
+3. The dashboard page `/device` (login required; preserves `?code=` through login and sign-up via `next`) shows the pending request (client hostname, OS, IP, time). **Deny** sets `status='denied'`.
+   * Device flow: the page asks the user to check that the code matches their terminal. **Approve** runs in one transaction: lock the pending, unexpired `device_codes` row by `user_code`; insert `authtokens (user_id, name = 'CLI on <client_hostname>', token_hash, token_prefix)`; set `status='approved', user_id, authtoken_id`.
+   * Callback login (`callback_port` set): no code to compare. **Approve** sets `status='authorized', user_id` and `callback_code_hash = sha256hex(c)` for a fresh random `c` (32 bytes, base64url), and sends the browser to `http://127.0.0.1:<callback_port>/callback?state=<callback_state>&code=<c>`. Approving again (same user, e.g. after a failed redirect) issues a new `c`. The CLI checks `state`, then redeems `POST /_tund/device/token {"device_code", "callback_code": c}`: the server locks the row, checks the hash, inserts the authtoken, sets `status='approved', authtoken_id` and answers like the poll (`200`, `403`, `410`), or `400 {"error":"invalid_callback_code"}` for a wrong or stale code (the CLI keeps waiting). Redeeming an already approved row with the right code answers `200` again. On success the CLI redirects the browser (`303`) to `callback_done_url`; failures get a small page from the CLI. The token only exists once the code has reached the CLI, so a login link sent to someone else is useless to the sender: approving it hands the code to the approver's own machine.
 4. `tund http …` without an authtoken on an interactive terminal runs the login flow first, then starts the tunnel. Non-interactive: exit with a hint to run `tund login`.
 
 ### Accounts

@@ -95,10 +95,11 @@ type deviceCode struct {
 	VerificationURLComplete string `json:"verification_url_complete"`
 	Interval                int    `json:"interval"`
 	ExpiresIn               int    `json:"expires_in"`
+	CallbackDoneURL         string `json:"callback_done_url"`
 }
 
 // DeviceLogin is a started device authorization: show UserCode and
-// VerificationURL(Complete) to the user, then call Poll.
+// VerificationURL(Complete) to the user, then call Poll (or Wait).
 type DeviceLogin struct {
 	Server                  string // normalized
 	UserCode                string
@@ -111,11 +112,37 @@ type DeviceLogin struct {
 	interval   time.Duration
 	hc         *http.Client
 	tokenURL   string
+	cb         *callback // nil: plain device flow
 }
 
 // StartDeviceLogin creates a token locally and registers its hash with the
 // server, which answers with the code the user has to approve.
 func StartDeviceLogin(ctx context.Context, server string, hc *http.Client) (*DeviceLogin, error) {
+	return startLogin(ctx, server, hc, nil)
+}
+
+// StartBrowserLogin is StartDeviceLogin for a browser on this machine: the
+// CLI listens on 127.0.0.1 and the dashboard redirects there after the user
+// approves, so there is no code to compare. Servers without callback support
+// get a plain device login (Callback reports false). Call Wait to finish; it
+// also closes the listener.
+func StartBrowserLogin(ctx context.Context, server string, hc *http.Client) (*DeviceLogin, error) {
+	cb, err := listenCallback()
+	if err != nil {
+		return startLogin(ctx, server, hc, nil) // no loopback here (sandbox?): fall back to the code
+	}
+	dl, err := startLogin(ctx, server, hc, cb)
+	if err != nil || dl.cb == nil {
+		cb.close()
+	}
+	return dl, err
+}
+
+// Callback reports whether the login finishes through the browser redirect to
+// this machine rather than by comparing the code.
+func (dl *DeviceLogin) Callback() bool { return dl.cb != nil }
+
+func startLogin(ctx context.Context, server string, hc *http.Client, cb *callback) (*DeviceLogin, error) {
 	server, err := NormalizeServer(server)
 	if err != nil {
 		return nil, err
@@ -131,12 +158,16 @@ func StartDeviceLogin(ctx context.Context, server string, hc *http.Client) (*Dev
 	codeURL, _ := EndpointURL(server, deviceCodePath)
 	tokenURL, _ := EndpointURL(server, deviceTokenPath)
 
-	status, body, err := postJSON(ctx, hc, codeURL, map[string]string{
+	req := map[string]any{
 		"token_hash":      TokenHash(token),
 		"token_prefix":    TokenPrefix(token),
 		"client_hostname": hostname,
 		"client_os":       runtime.GOOS + "/" + runtime.GOARCH,
-	})
+	}
+	if cb != nil {
+		req["callback_port"], req["callback_state"] = cb.port(), cb.state
+	}
+	status, body, err := postJSON(ctx, hc, codeURL, req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -170,7 +201,7 @@ func StartDeviceLogin(ctx context.Context, server string, hc *http.Client) (*Dev
 	if dc.ExpiresIn <= 0 {
 		expiresIn = 10 * pollUnit * 60
 	}
-	return &DeviceLogin{
+	dl := &DeviceLogin{
 		Server:                  server,
 		UserCode:                dc.UserCode,
 		VerificationURL:         dc.VerificationURL,
@@ -181,7 +212,14 @@ func StartDeviceLogin(ctx context.Context, server string, hc *http.Client) (*Dev
 		interval:                interval,
 		hc:                      hc,
 		tokenURL:                tokenURL,
-	}, nil
+	}
+	// An older server ignores the callback fields and doesn't send
+	// callback_done_url; its dashboard shows the code instead.
+	if cb != nil && dc.CallbackDoneURL != "" {
+		dl.cb = cb
+		cb.start(dl, dc.CallbackDoneURL)
+	}
+	return dl, nil
 }
 
 // OpenBrowser tries to open the approval page; it reports whether it did.
@@ -236,29 +274,90 @@ func (dl *DeviceLogin) Poll(ctx context.Context, note func(string)) (*LoginResul
 	}
 }
 
-// Login runs the device authorization flow on the terminal: it shows the
-// code, opens the browser when possible and waits for approval.
+// Wait is Poll that, for a callback login, also finishes when the browser
+// arrives at the callback; whichever settles the login first wins. It closes
+// the callback listener.
+func (dl *DeviceLogin) Wait(ctx context.Context, note func(string)) (*LoginResult, error) {
+	if dl.cb == nil {
+		return dl.Poll(ctx, note)
+	}
+	defer dl.cb.close()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	polled := make(chan callbackResult, 1)
+	go func() {
+		// The poll still settles denied and expired logins, and approvals
+		// through a dashboard that predates the callback.
+		res, err := dl.Poll(ctx, note)
+		polled <- callbackResult{res, err}
+	}()
+	var r callbackResult
+	select {
+	case r = <-dl.cb.result:
+	case r = <-polled:
+	}
+	return r.res, r.err
+}
+
+// redeem trades the callback code from the browser redirect for the token's
+// activation. Errors that are not *callbackRetry end the login.
+func (dl *DeviceLogin) redeem(ctx context.Context, code string) (*LoginResult, error) {
+	status, body, err := postJSON(ctx, dl.hc, dl.tokenURL, map[string]string{"device_code": dl.deviceCode, "callback_code": code})
+	if err != nil {
+		return nil, &callbackRetry{fmt.Sprintf("tund could not reach %s: %v", displayHost(dl.Server), unwrapDial(err))}
+	}
+	switch {
+	case status == http.StatusOK:
+		var ok struct {
+			Account string `json:"account"`
+		}
+		_ = json.Unmarshal(body, &ok)
+		return &LoginResult{Server: dl.Server, Token: dl.token, Account: ok.Account}, nil
+	case status == http.StatusForbidden:
+		return nil, ErrLoginDenied
+	case status == http.StatusGone, status == http.StatusNotFound:
+		return nil, ErrLoginExpired
+	case status == http.StatusBadRequest:
+		return nil, &callbackRetry{"This approval is out of date, probably from an older tab."}
+	case status >= 500:
+		return nil, &callbackRetry{fmt.Sprintf("%s had a problem (%s).", displayHost(dl.Server), apiErrorMessage(body, status))}
+	default:
+		return nil, fmt.Errorf("login failed: %s", apiErrorMessage(body, status))
+	}
+}
+
+// Login runs the login on the terminal. With a browser on this machine it
+// opens the dashboard and waits for the redirect back to the CLI; otherwise
+// (--no-browser, SSH, no display) it shows a code to approve on any device.
 func Login(ctx context.Context, opts LoginOptions) (*LoginResult, error) {
 	d := opts.Display
 	if d == nil {
 		d = NewDisplay(false)
 	}
-	dl, err := StartDeviceLogin(ctx, opts.Server, opts.HTTPClient)
+	browser := !opts.NoBrowser && d.pretty && browserAvailable()
+	start := StartDeviceLogin
+	if browser {
+		start = StartBrowserLogin
+	}
+	dl, err := start(ctx, opts.Server, opts.HTTPClient)
 	if err != nil {
 		return nil, err
 	}
-	opened := false
-	if !opts.NoBrowser && d.pretty {
-		opened = dl.OpenBrowser()
+	opened := browser && dl.OpenBrowser()
+	label, expiry := "Waiting for approval", "code"
+	if dl.Callback() {
+		d.browserLoginPrompt(dl.Server, dl.VerificationURLComplete, opened)
+		label, expiry = "Waiting for you to approve in the browser", "link"
+	} else {
+		d.loginPrompt(dl.Server, deviceCode{
+			UserCode:                dl.UserCode,
+			VerificationURL:         dl.VerificationURL,
+			VerificationURLComplete: dl.VerificationURLComplete,
+		}, opened)
 	}
-	d.loginPrompt(dl.Server, deviceCode{
-		UserCode:                dl.UserCode,
-		VerificationURL:         dl.VerificationURL,
-		VerificationURLComplete: dl.VerificationURLComplete,
-	}, opened)
-	sp := d.startSpinner("Waiting for approval", dl.ExpiresAt)
+	sp := d.startSpinner(label, expiry, dl.ExpiresAt)
 	defer sp.stop()
-	return dl.Poll(ctx, sp.note)
+	return dl.Wait(ctx, sp.note)
 }
 
 func postJSON(ctx context.Context, hc *http.Client, u string, v any) (int, []byte, error) {
@@ -295,14 +394,24 @@ func apiErrorMessage(body []byte, status int) string {
 	return fmt.Sprintf("HTTP %d %s", status, http.StatusText(status))
 }
 
-// openBrowser opens an http(s) URL in the default browser. It returns false
-// where that cannot work (SSH sessions, Linux without a display).
-func openBrowser(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+// browserAvailable reports whether a browser can be opened on this machine:
+// not in SSH sessions, and on Linux/BSD only with a display.
+func browserAvailable() bool {
+	if os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" {
 		return false
 	}
-	if os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CLIENT") != "" {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		return true
+	}
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+}
+
+// openBrowser opens an http(s) URL in the default browser. It returns false
+// where that cannot work (see browserAvailable).
+func openBrowser(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || !browserAvailable() {
 		return false
 	}
 	target := u.String()
@@ -313,9 +422,6 @@ func openBrowser(raw string) bool {
 	case "windows":
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
 	default:
-		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
-			return false
-		}
 		cmd = exec.Command("xdg-open", target)
 	}
 	if err := cmd.Start(); err != nil {

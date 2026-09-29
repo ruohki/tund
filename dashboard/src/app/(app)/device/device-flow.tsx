@@ -113,6 +113,16 @@ function Pending({
     ["IP address", <span key="ip" className="font-mono text-[12.5px]">{request.clientIp || "unknown"}</span>],
     ["Requested", formatClock(request.createdAt, tz)],
   ];
+  const expiry = (
+    <p className="flex items-center gap-1.5 text-[12.5px] text-muted" aria-live="polite">
+      <Clock3 size={13} />
+      {remaining === null
+        ? "Valid for 10 minutes"
+        : expired
+          ? "Expired"
+          : `Expires in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`}
+    </p>
+  );
   return (
     <Frame>
       <Heading icon={<TerminalSquare size={26} strokeWidth={1.5} />} title="Log in your terminal?">
@@ -120,20 +130,15 @@ function Pending({
       </Heading>
 
       <div className="rounded-lg border border-line bg-surface">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line px-5 py-4">
-          <div>
-            <p className="text-[12.5px] text-muted">Code</p>
-            <p className="font-mono text-[32px] font-medium leading-tight tracking-[0.14em] text-ink">{request.userCode}</p>
+        {request.callback ? null : (
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line px-5 py-4">
+            <div>
+              <p className="text-[12.5px] text-muted">Code</p>
+              <p className="font-mono text-[32px] font-medium leading-tight tracking-[0.14em] text-ink">{request.userCode}</p>
+            </div>
+            {expiry}
           </div>
-          <p className="flex items-center gap-1.5 text-[12.5px] text-muted" aria-live="polite">
-            <Clock3 size={13} />
-            {remaining === null
-              ? "Valid for 10 minutes"
-              : expired
-                ? "Expired"
-                : `Expires in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`}
-          </p>
-        </div>
+        )}
         <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-y-2 px-5 py-4 text-[13.5px]">
           {rows.map(([k, v]) => (
             <div key={k} className="contents">
@@ -142,15 +147,23 @@ function Pending({
             </div>
           ))}
         </dl>
+        {request.callback ? <div className="border-t border-line px-5 py-3">{expiry}</div> : null}
       </div>
 
       <p className="mt-5 flex items-start gap-2.5 rounded-md border border-sodium/60 bg-sodium-wash px-3.5 py-3 text-[13.5px] text-ink">
         <TriangleAlert size={16} className="mt-0.5 shrink-0 text-sodium-ink" />
-        <span>
-          <span className="font-semibold">Only approve if this code matches the one in your terminal.</span> If you
-          didn&apos;t just run tund, or the code is different, deny the request. Approving gives that computer access to
-          your tunnels.
-        </span>
+        {request.callback ? (
+          <span>
+            <span className="font-semibold">Only approve if you just ran tund on this computer.</span> Approving gives
+            that terminal access to your tunnels; this tab then hands the login back to it.
+          </span>
+        ) : (
+          <span>
+            <span className="font-semibold">Only approve if this code matches the one in your terminal.</span> If you
+            didn&apos;t just run tund, or the code is different, deny the request. Approving gives that computer access
+            to your tunnels.
+          </span>
+        )}
       </p>
 
       {blocked ? (
@@ -196,28 +209,33 @@ function Pending({
   );
 }
 
+/** Also the landing page after a callback login (/device/done). */
+export function DeviceApproved({ email }: { email: string }) {
+  return (
+    <Frame>
+      <Heading icon={<CheckCircle2 size={28} strokeWidth={1.5} className="text-ok" />} title="Terminal logged in">
+        Your terminal is now logged in as <span className="font-medium text-ink">{email}</span>. You can close this tab
+        and go back to it.
+      </Heading>
+      <p className="text-[13.5px] text-ink-2">
+        The tunnel starts in the terminal on its own. Its requests show up under{" "}
+        <Link href="/inspect" className="font-medium text-ink underline underline-offset-4">
+          Inspect
+        </Link>
+        , and the new token is listed under{" "}
+        <Link href="/authtokens" className="font-medium text-ink underline underline-offset-4">
+          Auth tokens
+        </Link>
+        .
+      </p>
+    </Frame>
+  );
+}
+
 function Outcome({ outcome, input }: { outcome: DeviceOutcome; input: string }) {
   switch (outcome.state) {
     case "approved":
-      return (
-        <Frame>
-          <Heading icon={<CheckCircle2 size={28} strokeWidth={1.5} className="text-ok" />} title="Terminal logged in">
-            Your terminal is now logged in as <span className="font-medium text-ink">{outcome.email}</span>. You can close
-            this tab.
-          </Heading>
-          <p className="text-[13.5px] text-ink-2">
-            The tunnel starts in the terminal on its own. Its requests show up under{" "}
-            <Link href="/inspect" className="font-medium text-ink underline underline-offset-4">
-              Inspect
-            </Link>
-            , and the new token is listed under{" "}
-            <Link href="/authtokens" className="font-medium text-ink underline underline-offset-4">
-              Auth tokens
-            </Link>
-            .
-          </p>
-        </Frame>
-      );
+      return <DeviceApproved email={outcome.email} />;
     case "denied":
       return (
         <Frame>
@@ -255,6 +273,7 @@ function Outcome({ outcome, input }: { outcome: DeviceOutcome; input: string }) 
     case "error":
       return <CodeEntry initial={input} error={outcome.message} />;
     case "pending":
+    case "redirect":
       return null;
   }
 }
@@ -287,6 +306,9 @@ export function DeviceFlow({
       setError(null);
       startTransition(async () => {
         const res = await (approve ? approveDeviceAction : denyDeviceAction)(code);
+        // Hand the login to the terminal's listener; it sends the browser on
+        // to /device/done. The button keeps spinning until the page changes.
+        if (res.state === "redirect") return window.location.assign(res.url);
         setBusy(null);
         if (res.state === "error") setError(res.message);
         else setOutcome(res);
