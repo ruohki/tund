@@ -78,6 +78,10 @@ jobs:
           context: ${{ steps.names.outputs.context }}
           platforms: ${{ matrix.platform }}
           build-args: VERSION=${{ steps.names.outputs.version }}
+          # Links the package to this (public) repository on GHCR.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=tund ${{ matrix.component }}
           outputs: type=image,name=${{ steps.names.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.component }}-${{ steps.names.outputs.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ steps.names.outputs.arch }}
