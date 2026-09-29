@@ -49,7 +49,7 @@ type Page = "terms" | "acceptable-use";
 async function defaults() {
   const s = await getSettings();
   const c = config();
-  return { name: s.instance_name || "tund", host: c.dashboardHost, retention: s.retention_days };
+  return { name: s.instance_name || "TUNd", host: c.dashboardHost, retention: s.retention_days };
 }
 
 async function defaultTerms(): Promise<string> {

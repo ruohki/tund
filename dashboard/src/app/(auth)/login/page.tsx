@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <>
       <h1 className="text-[24px] font-semibold tracking-[-0.015em] text-ink">Sign in</h1>
-      <p className="mt-1 mb-6 text-[14px] text-ink-2">Manage tunnels, domains and access for this tund server.</p>
+      <p className="mt-1 mb-6 text-[14px] text-ink-2">Manage tunnels, domains and access for this TUNd server.</p>
       {reset === "1" ? (
         <p role="status" className="mb-5 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
           Your password was changed and you were signed out everywhere. Sign in with the new password.

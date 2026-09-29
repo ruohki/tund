@@ -52,7 +52,7 @@ ul{margin:10px 0 0;padding-left:18px;color:var(--muted)}li{margin:4px 0}
 a{color:inherit}
 </style></head>
 <body><main>
-<div class="brand"><i></i>tund</div>
+<div class="brand"><i></i>TUNd</div>
 {{template "body" .}}
 </main></body></html>`
 
@@ -70,14 +70,14 @@ var pageBodies = map[string]string{
 <div class="code">404 · offline</div>
 <h1>This tunnel is offline</h1>
 <p><code>{{.Host}}</code> was last online <strong>{{.LastSeen}}</strong>.</p>
-<p>The tund client that served it has disconnected. It will be reachable again as soon as the owner restarts it:</p>
+<p>The TUNd client that served it has disconnected. It will be reachable again as soon as the owner restarts it:</p>
 <pre>tund http 3000{{if .Label}} --subdomain {{.Label}}{{end}}</pre>
 {{end}}`,
 
 	pageBadGateway: `{{define "title"}}Local service unavailable{{end}}{{define "body"}}
 <div class="code">502 · bad gateway</div>
 <h1>The tunnel is up, but the app behind it did not answer</h1>
-<p>The tund client for <code>{{.Host}}</code> is connected, but it could not reach <code>{{.Local}}</code>.</p>
+<p>The TUNd client for <code>{{.Host}}</code> is connected, but it could not reach <code>{{.Local}}</code>.</p>
 {{if .Detail}}<div class="detail">{{.Detail}}</div>{{end}}
 <ul><li>Is your app running and listening on that port?</li><li>Does it listen on <code>localhost</code> / <code>127.0.0.1</code> (not only on another interface)?</li><li>If it serves HTTPS, start the tunnel with an <code>https://</code> address.</li></ul>
 {{end}}`,
@@ -105,7 +105,7 @@ var pageBodies = map[string]string{
 <div class="code">heads up</div>
 <h1>You are about to visit</h1>
 <div class="host">{{.Host}}</div>
-<p>This site is served through <strong>tund</strong>, a service that lets developers share apps running on their own computers. It is run by whoever sent you the link, <strong>not</strong> by tund.</p>
+<p>This site is served through <strong>TUNd</strong>, a service that lets developers share apps running on their own computers. It is run by whoever sent you the link, <strong>not</strong> by TUNd.</p>
 <div class="warnbox">Only continue if you trust the person who shared this link. Don't enter passwords, payment details or other personal information unless you are sure the site is legitimate.</div>
 <div class="row">
 <form method="post" action="/_tund/warning/accept"><input type="hidden" name="next" value="{{.Next}}"><button type="submit">Visit site</button></form>
@@ -120,7 +120,7 @@ Developers: this page appears once per browser. API calls, webhooks and requests
 	pageDashboardDown: `{{define "title"}}Dashboard starting{{end}}{{define "body"}}
 <div class="code">502</div>
 <h1>The dashboard is not reachable right now</h1>
-<p>The tund edge is running, but the management app did not respond. It may still be starting. Reload in a few seconds.</p>
+<p>The TUNd edge is running, but the management app did not respond. It may still be starting. Reload in a few seconds.</p>
 {{if .Detail}}<div class="detail">{{.Detail}}</div>{{end}}
 {{end}}`,
 }

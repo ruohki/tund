@@ -128,7 +128,7 @@ export async function Landing() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
       <header className="mx-auto flex max-w-[1180px] items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" aria-label="tund home">
+        <Link href="/" aria-label="TUNd home">
           <Wordmark />
         </Link>
         <nav className="flex items-center gap-2" aria-label="Account">
@@ -247,7 +247,7 @@ export async function Landing() {
                 title="Your own domains"
                 example={<p className={exampleBox}>tund http 3000 --domain api.example.com</p>}
               >
-                Point a domain, or a whole wildcard, at tund and serve tunnels from it. Certificates are issued
+                Point a domain, or a whole wildcard, at TUNd and serve tunnels from it. Certificates are issued
                 automatically once DNS is in place.
               </Feature>
             ) : null}

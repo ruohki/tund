@@ -16,7 +16,7 @@ export function Wordmark() {
   return (
     <span className="inline-flex items-center gap-2 text-ink">
       <BrandMark />
-      <span className="text-[19px] font-bold tracking-[-0.03em]">tund</span>
+      <span className="text-[19px] font-bold tracking-[-0.03em]">TUNd</span>
     </span>
   );
 }

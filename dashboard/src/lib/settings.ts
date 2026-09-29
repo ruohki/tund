@@ -399,7 +399,7 @@ export const SETTING_DEFS: SettingDef[] = [
     label: "Instance name",
     help: "Shown in page titles and emails.",
     kind: "string",
-    fallback: () => "tund",
+    fallback: () => "TUNd",
   },
 ];
 

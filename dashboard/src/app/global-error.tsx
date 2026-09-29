@@ -10,7 +10,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <title>Error · tund</title>
+        <title>Error · TUNd</title>
         <meta name="robots" content="noindex, nofollow" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

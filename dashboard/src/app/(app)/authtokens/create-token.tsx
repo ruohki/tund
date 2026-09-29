@@ -34,7 +34,7 @@ export function CreateTokenForm({ dashboardUrl }: { dashboardUrl: string }) {
             Copy “{state.name}” now. It won&apos;t be shown again.
           </p>
           <Command prompt="" className="mt-3 bg-surface">{state.token}</Command>
-          <p className="mt-3 text-[13px] text-ink-2">Save it on the machine with the tund client:</p>
+          <p className="mt-3 text-[13px] text-ink-2">Save it on the machine with the TUNd client:</p>
           <Command className="mt-1.5 bg-surface">{`tund config add-authtoken ${state.token}`}</Command>
           <p className="mt-3 text-[13px] text-ink-2">Or, in CI, pass it as an environment variable:</p>
           <Command className="mt-1.5 bg-surface">{`TUND_AUTHTOKEN=${state.token} tund http 3000 --log`}</Command>

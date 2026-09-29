@@ -90,7 +90,7 @@ export default async function AccessPage() {
 
       <Panel
         title="Identity providers"
-        description="Register tund as a web application at your provider, then add it here."
+        description="Register TUNd as a web application at your provider, then add it here."
         actions={null}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2 px-4 py-2.5 text-[13px]">

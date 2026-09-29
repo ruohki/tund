@@ -206,7 +206,7 @@ export default async function GetStartedPage() {
         <Panel
           id="identity-headers"
           title="Identity headers"
-          description="After a visitor passes single sign-on (or a password), tund tells your app who it is."
+          description="After a visitor passes single sign-on (or a password), TUNd tells your app who it is."
           bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
         >
           <IdentityHeaderTable />
@@ -215,7 +215,7 @@ export default async function GetStartedPage() {
           </pre>
           <p>
             tund removes every <code className="font-mono text-[12.5px] text-ink">X-Tund-*</code> header a visitor sends,
-            on every tunnel, so these can&apos;t be spoofed on requests that arrive through tund. Claims the provider
+            on every tunnel, so these can&apos;t be spoofed on requests that arrive through TUNd. Claims the provider
             doesn&apos;t send are left out; request the <code className="font-mono text-[12.5px] text-ink">profile</code>{" "}
             scope for names and usually a <code className="font-mono text-[12.5px] text-ink">groups</code> scope or claim
             mapping for groups.

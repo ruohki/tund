@@ -9,8 +9,8 @@ export const DESCRIPTION =
 /** Instance name and public URL for metadata; tolerant of a missing database (e.g. during a build). */
 export async function siteInfo() {
   const name = await getSettings().then(
-    (s) => s.instance_name || "tund",
-    () => "tund",
+    (s) => s.instance_name || "TUNd",
+    () => "TUNd",
   );
   const c = config();
   return { name, url: c.dashboardUrl, host: c.dashboardHost, baseDomain: c.baseDomain };
