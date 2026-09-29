@@ -34,6 +34,9 @@ export type DomainItem = {
   /** Set for team-owned domains. */
   teamId: string | null;
   createdAt: string;
+  /** Custom domains of non-trusted accounts may need an admin's approval. */
+  approval: "approved" | "pending" | "rejected";
+  reviewReason: string;
 };
 
 /** A provider the domain may use; `ref` is how the CLI names it (slug, or team/slug). */
@@ -363,6 +366,13 @@ export function DomainRow({
               <Badge tone="live">Waiting for DNS</Badge>
             )
           ) : null}
+          {domain.approval === "pending" ? (
+            <Badge tone="live" title="An administrator reviews new custom domains before the server serves them">
+              Pending review
+            </Badge>
+          ) : domain.approval === "rejected" ? (
+            <Badge tone="danger">Rejected</Badge>
+          ) : null}
           <AuthBadge mode={domain.authMode} />
           {domain.authMode === "oidc" && domain.providerName ? (
             <span className="text-[12px] text-muted">via {domain.providerName}</span>
@@ -439,6 +449,16 @@ export function DomainRow({
         </div>
       ) : null}
 
+      {domain.approval === "pending" ? (
+        <p className="mt-2 text-[12.5px] text-ink-2">
+          Waiting for an administrator to approve this domain. Tunnels can use it once it&apos;s approved; you can set up
+          DNS in the meantime.
+        </p>
+      ) : domain.approval === "rejected" ? (
+        <p className="mt-2 text-[12.5px] text-danger">
+          An administrator rejected this domain{domain.reviewReason ? `: ${domain.reviewReason}` : "."} Tunnels can&apos;t use it.
+        </p>
+      ) : null}
       {domain.verified ? <Command className="mt-2.5 max-w-xl">{usage}</Command> : null}
     </li>
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { smtpConfigured } from "@/lib/mail";
+import { turnstileSiteKey } from "@/lib/turnstile";
 import { ForgotForm } from "./form";
 
 export const metadata: Metadata = { title: "Reset password" };
@@ -13,7 +14,7 @@ export default async function ForgotPasswordPage() {
       {available ? (
         <>
           <p className="mt-1 mb-6 text-[14px] text-ink-2">We&apos;ll email you a link to choose a new password.</p>
-          <ForgotForm />
+          <ForgotForm turnstileSiteKey={await turnstileSiteKey()} />
         </>
       ) : (
         <p className="mt-2 text-[14px] text-ink-2">

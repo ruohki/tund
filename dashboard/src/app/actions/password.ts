@@ -1,6 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentUser, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -12,11 +11,12 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { getSettings } from "@/lib/settings";
 import { sendVerification } from "@/lib/account-mail";
 import { checkEmail } from "@/lib/validate";
+import { clientIp as requestIp } from "@/lib/client-ip";
+import { verifyTurnstile } from "@/lib/turnstile";
 import type { FormState } from "./auth";
 
 async function clientIp() {
-  const h = await headers();
-  return (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "unknown";
+  return (await requestIp()) || "unknown";
 }
 
 const SENT = "If an account uses that address, we sent it a link to reset the password. It works for 1 hour.";
@@ -26,6 +26,8 @@ export async function forgotPasswordAction(_: FormState, fd: FormData): Promise<
   const email = String(fd.get("email") ?? "").trim().toLowerCase();
   if (checkEmail(email)) return { error: "Enter the email address of your account." };
   if (!(await smtpConfigured())) return { error: "Password reset by email isn't available on this server. Ask an administrator." };
+  const captcha = await verifyTurnstile(fd);
+  if (captcha) return { error: captcha };
   const ip = await clientIp();
   if (rateLimited(`forgot-ip:${ip}`, 10, 15 * 60_000)) return { error: "Too many requests from your network. Try again in a few minutes." };
   // Per-address limit answers like a success, so it doesn't reveal anything either.

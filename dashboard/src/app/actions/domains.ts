@@ -2,7 +2,10 @@
 
 import { randomBytes } from "node:crypto";
 import { refresh } from "next/cache";
+import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { blockedHostReason, customDomainRefusal, fileReport, isTrusted, refreshDomainRisk } from "@/lib/abuse";
+import { getSettings } from "@/lib/settings";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { checkRouting, checkTxt, challengeName, type RoutingStatus } from "@/lib/dnscheck";
@@ -104,23 +107,50 @@ export async function addCustomDomainAction(_: FormState, fd: FormData): Promise
   if (res.error !== null) return { error: res.error };
   const owner = await ownerFromForm(user, fd);
   if (typeof owner === "string") return { error: owner };
+  // docs/SPEC.md "Abuse protection": untrusted_custom_domains decides for non-trusted accounts.
+  const refusal = await customDomainRefusal(user, res.hostname);
+  if (refusal) return { error: refusal };
+  if (await blockedHostReason(res.hostname)) return { error: `${res.hostname} has been blocked on this server.` };
+  const review = !isTrusted(user) && (await getSettings()).untrusted_custom_domains === "review";
+  let id: string;
   try {
     const out = await db().begin(async (tx) => {
       const limitError = await lockAndCheckLimit(tx, user, "custom", owner);
       if (limitError) return { error: limitError };
       const [row] = await tx`
-        insert into domains (user_id, team_id, hostname, kind, verification_token)
-        values (${user.id}, ${owner.teamId}, ${res.hostname}, 'custom', ${randomBytes(16).toString("hex")}) returning id`;
+        insert into domains (user_id, team_id, hostname, kind, verification_token, approval)
+        values (${user.id}, ${owner.teamId}, ${res.hostname}, 'custom', ${randomBytes(16).toString("hex")},
+                ${review ? "pending" : "approved"})
+        returning id`;
       return { id: row.id as string };
     });
     if ("error" in out) return { error: out.error };
-    await domainChanged(out.id, owner);
+    id = out.id;
+    await domainChanged(id, owner);
   } catch (err) {
     if (uniqueViolation(err)) return { error: `${res.hostname} has already been added.` };
     throw err;
   }
+  if (review) {
+    // Shows up in the admin queue (and the admin email); the risk signals follow once looked up.
+    await fileReport({
+      hostname: res.hostname,
+      url: `https://${res.hostname.replace(/^\*\./, "")}/`,
+      category: "other",
+      source: "admin",
+      description: `custom domain awaiting review: ${res.hostname}`,
+      details: { kind: "domain_review", domain_id: id },
+      userId: user.id,
+      tunnelId: null,
+    });
+    after(() => refreshDomainRisk(id).catch((err) => console.error("tund: domain risk lookup failed", err)));
+  }
   refresh();
-  return { ok: `Added ${res.hostname}. Create the DNS records below, then verify.` };
+  return {
+    ok: review
+      ? `Added ${res.hostname}. An administrator reviews new custom domains before they go live; create the DNS records below and verify meanwhile.`
+      : `Added ${res.hostname}. Create the DNS records below, then verify.`,
+  };
 }
 
 export type VerifyResult = {

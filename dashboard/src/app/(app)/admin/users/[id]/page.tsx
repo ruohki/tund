@@ -15,6 +15,8 @@ import { AuthBadge, Badge, PageHeader, Panel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/client-ui";
 import { deleteUserAction } from "@/app/actions/admin";
 import { FlagSwitch, ResetPasswordButton, StopTunnelForm } from "../../admin-forms";
+import { FlagUserForm } from "../../abuse/abuse-forms";
+import { ApprovalBadge } from "../../domains/approval-badge";
 
 export const metadata: Metadata = { title: "User" };
 
@@ -28,7 +30,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
 
   const [tunnels, domains, teams, [counts], mailOn, usage, settings] = await Promise.all([
     listTunnels(id, { limit: 20 }),
-    sql`select id, hostname, kind, team_id, verified_at, auth_mode, is_default from domains where user_id = ${id} and team_id is null order by kind desc, hostname`,
+    sql`select id, hostname, kind, team_id, verified_at, auth_mode, is_default, approval from domains where user_id = ${id} and team_id is null order by kind desc, hostname`,
     sql`
       select t.slug, t.name, m.role, (select count(*)::int from team_members x where x.team_id = t.id) as members
       from team_members m join teams t on t.id = m.team_id where m.user_id = ${id} order by t.name`,
@@ -63,6 +65,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             <span>{u.email}</span>
             {u.is_admin ? <Badge tone="outline">Admin</Badge> : null}
             {u.disabled_at ? <Badge tone="danger">Disabled</Badge> : null}
+            {u.flagged_at ? <Badge tone="danger">Flagged</Badge> : null}
             {u.email_verified_at ? <Badge tone="ok">Verified</Badge> : <Badge tone="live">Unverified</Badge>}
             <span className="text-muted">joined {formatDateTime(u.created_at)}</span>
           </span>
@@ -95,6 +98,20 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             help={u.is_admin ? "Admins are always trusted." : "Their tunnels skip the browser warning page."}
             disabled={Boolean(u.is_admin)}
           />
+          {u.flagged_at ? (
+            <FlagSwitch
+              id={u.id}
+              flag="flagged"
+              on
+              label="Flagged"
+              help={`${u.flag_reason || "No reason given"} (${formatDateTime(u.flagged_at)}). A note for admins; it doesn't restrict the account.`}
+            />
+          ) : (
+            <div className="py-3">
+              <p className="mb-2 text-[13.5px] font-medium text-ink">Flag for review</p>
+              <FlagUserForm id={u.id} />
+            </div>
+          )}
           <FlagSwitch
             id={u.id}
             flag="verified"
@@ -205,6 +222,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
                   <span className="font-mono text-ink">{d.hostname}</span>
                   <Badge tone="outline">{d.kind === "custom" ? "Custom" : d.is_default ? "Static, default" : "Static"}</Badge>
                   {d.kind === "custom" && !d.verified_at ? <Badge tone="live">Unverified</Badge> : null}
+                  {d.kind === "custom" && d.approval !== "approved" ? <ApprovalBadge approval={d.approval} /> : null}
                 </span>
                 <AuthBadge mode={d.auth_mode} />
               </li>

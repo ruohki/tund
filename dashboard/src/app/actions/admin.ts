@@ -59,7 +59,7 @@ export async function createUserAction(_: FormState, fd: FormData): Promise<Form
   return { ok: `Created ${email}. Share the password with them; they can change it under Settings.` };
 }
 
-type Flag = "disabled" | "trusted" | "admin" | "verified";
+type Flag = "disabled" | "trusted" | "admin" | "verified" | "flagged";
 
 /** One entry point for the account switches on the user pages; every change is audited. */
 export async function setUserFlagAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -70,6 +70,7 @@ export async function setUserFlagAction(_: FormState, fd: FormData): Promise<For
   if (!u) return { error: "Unknown user." };
   if (u.id === admin.id && (flag === "disabled" || flag === "admin")) return { error: "You can't change that on your own account." };
   let action: string;
+  let details: Record<string, unknown> = {};
   switch (flag) {
     case "disabled":
       await db()`update users set disabled_at = ${on ? new Date() : null} where id = ${u.id}`;
@@ -91,6 +92,14 @@ export async function setUserFlagAction(_: FormState, fd: FormData): Promise<For
       await notify("tund_config", { kind: "user_updated", id: u.id });
       action = on ? "user.admin" : "user.unadmin";
       break;
+    case "flagged": {
+      // Flags are notes for admins (the edge sets them too); they don't restrict the account.
+      const reason = str(fd, "reason").slice(0, 300) || "flagged by an administrator";
+      await db()`update users set flagged_at = ${on ? new Date() : null}, flag_reason = ${on ? reason : ""} where id = ${u.id}`;
+      action = on ? "user.flag" : "user.unflag";
+      if (on) details = { reason };
+      break;
+    }
     case "verified":
       if (!on) return { error: "Verification can't be undone." };
       await db()`update users set email_verified_at = coalesce(email_verified_at, now()) where id = ${u.id}`;
@@ -100,7 +109,7 @@ export async function setUserFlagAction(_: FormState, fd: FormData): Promise<For
     default:
       return { error: "Unknown setting." };
   }
-  await audit(actorOf(admin), action, u.email);
+  await audit(actorOf(admin), action, u.email, details);
   refresh();
   return { ok: "Saved." };
 }

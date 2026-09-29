@@ -15,6 +15,7 @@ const FILTERS = [
   { id: "admin", label: "Admins" },
   { id: "disabled", label: "Disabled" },
   { id: "unverified", label: "Unverified" },
+  { id: "flagged", label: "Flagged" },
 ] as const;
 
 export default async function UsersPage({ searchParams }: PageProps<"/admin/users">) {
@@ -25,7 +26,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
   const like = `%${q.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
   const users = await sql`
     select u.id, u.email, u.name, u.is_admin, u.trusted, u.disabled_at, u.email_verified_at, u.created_at,
-      u.transfer_quota_gb,
+      u.transfer_quota_gb, u.flagged_at, u.flag_reason,
       (select coalesce(sum(d.bytes_in + d.bytes_out), 0)::bigint from usage_daily d
         where d.user_id = u.id and d.day >= date_trunc('month', now() at time zone 'utc')::date) as month_bytes,
       (select count(*) from tunnels t where t.user_id = u.id and t.ended_at is null)::int as online,
@@ -34,7 +35,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
     from users u
     where true
       ${q ? sql`and (u.email ilike ${like} or u.name ilike ${like})` : sql``}
-      ${filter === "admin" ? sql`and u.is_admin` : filter === "disabled" ? sql`and u.disabled_at is not null` : filter === "unverified" ? sql`and u.email_verified_at is null` : sql``}
+      ${filter === "admin" ? sql`and u.is_admin` : filter === "disabled" ? sql`and u.disabled_at is not null` : filter === "unverified" ? sql`and u.email_verified_at is null` : filter === "flagged" ? sql`and u.flagged_at is not null` : sql``}
     order by u.created_at desc
     limit 500`;
   const settings = await getSettings();
@@ -108,6 +109,11 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
                       {u.is_admin ? <Badge tone="outline">Admin</Badge> : null}
                       {u.trusted && !u.is_admin ? <Badge tone="outline">Trusted</Badge> : null}
                       {u.disabled_at ? <Badge tone="danger">Disabled</Badge> : null}
+                      {u.flagged_at ? (
+                        <Badge tone="danger" title={u.flag_reason || undefined}>
+                          Flagged
+                        </Badge>
+                      ) : null}
                       {!u.email_verified_at ? <Badge tone="live">Unverified</Badge> : null}
                     </span>
                   </td>

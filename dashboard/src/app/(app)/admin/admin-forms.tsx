@@ -9,7 +9,7 @@ import {
 import { cn, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
 
-type Flag = "disabled" | "trusted" | "admin" | "verified";
+type Flag = "disabled" | "trusted" | "admin" | "verified" | "flagged";
 
 /** A labeled switch that flips one account flag on submit. */
 export function FlagSwitch({

@@ -6,6 +6,7 @@ import { getSettings } from "./settings";
 import { db, notify } from "./db";
 import { randomLabel } from "./names";
 import { checkSubdomain } from "./validate";
+import { blockedHostReason, labelRefusal } from "./abuse";
 
 // Static hostnames: base-domain subdomains pinned to an account or a team
 // (domains rows with kind='subdomain'). See docs/SPEC.md "Static hostnames
@@ -88,7 +89,10 @@ export async function pinLabel(user: User, label: string, owner: DomainOwner = P
   const c = config();
   const invalid = checkSubdomain(label, c.dashboardHost);
   if (invalid) return { ok: false, error: invalid };
+  const refusal = await labelRefusal(user, label);
+  if (refusal) return { ok: false, error: refusal };
   const hostname = `${label}.${c.baseDomain}`;
+  if (await blockedHostReason(hostname)) return { ok: false, error: `${hostname} has been blocked on this server.` };
   try {
     const res = await db().begin(async (tx): Promise<PinResult> => {
       const limitError = await lockAndCheckLimit(tx, user, "subdomain", owner);
@@ -125,7 +129,7 @@ export async function pinRandom(user: User, owner: DomainOwner = PERSONAL): Prom
   let last: PinResult = { ok: false, error: "Couldn't find a free name. Try again." };
   for (let i = 0; i < 6; i++) {
     last = await pinLabel(user, randomLabel(), owner);
-    if (last.ok || !/taken|in use|already/.test(last.error)) return last;
+    if (last.ok || !/taken|in use|already|not allowed/.test(last.error)) return last;
   }
   return last;
 }

@@ -143,7 +143,7 @@ export function SettingsForm({ fields }: { fields: FieldView[] }) {
   return (
     <form action={action} className="flex flex-col gap-6">
       {GROUPS.map((g) => (
-        <Panel key={g} title={g}>
+        <Panel key={g} id={g.toLowerCase().replace(/[^a-z0-9]+/g, "-")} title={g}>
           <ul className="divide-y divide-line">
             {fields
               .filter((f) => f.group === g)

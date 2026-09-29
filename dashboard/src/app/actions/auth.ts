@@ -8,6 +8,11 @@ import { checkEmail } from "@/lib/validate";
 import { signupCheck } from "@/lib/signup";
 import { verificationRequired } from "@/lib/mail";
 import { notifyAdminsOfSignup, sendVerification } from "@/lib/account-mail";
+import { clientIp } from "@/lib/client-ip";
+import { isDisposableEmail } from "@/lib/disposable-domains";
+import { rateExceeded, rateRecord } from "@/lib/email-tokens";
+import { getSettings } from "@/lib/settings";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 export type FormState = { error?: string | null; ok?: string | null } | null;
 
@@ -29,7 +34,15 @@ export async function loginAction(_: FormState, fd: FormData): Promise<FormState
   redirect(safeNext(fd.get("next")));
 }
 
-async function createAccount(fd: FormData, opts: { first: boolean; inviteEmail?: string | null }): Promise<FormState> {
+type AccountOptions = {
+  first: boolean;
+  inviteEmail?: string | null;
+  /** Runs after the form validated, before the account is created; returns an error to stop. */
+  gate?: (email: string) => Promise<string | null>;
+  onCreated?: () => void;
+};
+
+async function createAccount(fd: FormData, opts: AccountOptions): Promise<FormState> {
   const email = str(fd, "email").toLowerCase();
   const name = str(fd, "name").slice(0, 100);
   const password = String(fd.get("password") ?? "");
@@ -39,6 +52,8 @@ async function createAccount(fd: FormData, opts: { first: boolean; inviteEmail?:
   if (opts.inviteEmail && opts.inviteEmail !== email) {
     return { error: `This invite is for ${opts.inviteEmail}. Sign up with that address to accept it.` };
   }
+  const refused = opts.gate ? await opts.gate(email) : null;
+  if (refused) return { error: refused };
   const hash = await hashPassword(password);
   // New accounts start unverified only while verification is enforced; the first admin never is.
   const mustVerify = !opts.first && (await verificationRequired());
@@ -61,6 +76,7 @@ async function createAccount(fd: FormData, opts: { first: boolean; inviteEmail?:
     throw err;
   }
   if (!userId) redirect(withNext("/login", fd.get("next")));
+  opts.onCreated?.();
   if (mustVerify) await sendVerification(userId, email);
   if (!opts.first) await notifyAdminsOfSignup(userId, email);
   await startSession(userId);
@@ -76,7 +92,25 @@ export async function setupAction(_: FormState, fd: FormData): Promise<FormState
 export async function signupAction(_: FormState, fd: FormData): Promise<FormState> {
   const check = await signupCheck(safeNext(fd.get("next")));
   if (!check.allowed) return { error: check.reason };
-  return createAccount(fd, { first: false, inviteEmail: check.inviteEmail });
+  const s = await getSettings();
+  const rateKey = `signup-ip:${(await clientIp()) || "unknown"}`;
+  return createAccount(fd, {
+    first: false,
+    inviteEmail: check.inviteEmail,
+    // docs/SPEC.md "Abuse protection": terms, disposable addresses, Turnstile, sign-ups per IP and hour.
+    gate: async (email) => {
+      if (fd.get("terms") !== "on") return "Accept the Terms of Service and the Acceptable Use Policy to create an account.";
+      // An invite names the address, so whoever invited them already chose it.
+      if (s.block_disposable_emails && !check.inviteEmail && isDisposableEmail(email)) {
+        return "Disposable email addresses can't be used here. Sign up with an address you'll keep.";
+      }
+      if (s.signup_rate_limit > 0 && rateExceeded(rateKey, s.signup_rate_limit, 60 * 60_000)) {
+        return "Too many accounts were created from your network in the last hour. Try again later.";
+      }
+      return verifyTurnstile(fd);
+    },
+    onCreated: () => rateRecord(rateKey),
+  });
 }
 
 export async function logoutAction(fd?: FormData) {

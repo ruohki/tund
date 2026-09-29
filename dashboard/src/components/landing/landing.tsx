@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { abuseHref, publicConfig } from "@/lib/config";
+import { publicConfig } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { DESCRIPTION, siteInfo } from "@/lib/seo";
 import { Wordmark } from "../brand";
@@ -87,8 +87,7 @@ const exampleBox = "rounded-md border border-line bg-surface-2 px-3 py-2 font-mo
 export async function Landing() {
   const cfg = publicConfig();
   const site = await siteInfo();
-  const { browser_warning: browserWarning, abuse_contact: abuseContact } = await getSettings();
-  const reportAbuse = abuseHref(abuseContact);
+  const { browser_warning: browserWarning } = await getSettings();
   const url = `${cfg.scheme}://brave-otter-4821.${cfg.baseDomain}${cfg.portSuffix}`;
   const host = url.replace(/^https?:\/\//, "");
 
@@ -299,11 +298,15 @@ export async function Landing() {
         <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-4 px-5 py-6 text-[12.5px] text-muted sm:px-8">
           <span className="flex flex-wrap items-center gap-4">
             <span>{cfg.dashboardHost}</span>
-            {reportAbuse ? (
-              <a href={reportAbuse} className="underline-offset-4 hover:text-ink hover:underline" rel="noreferrer">
-                Report abuse
-              </a>
-            ) : null}
+            <Link href="/terms" className="underline-offset-4 hover:text-ink hover:underline">
+              Terms
+            </Link>
+            <Link href="/acceptable-use" className="underline-offset-4 hover:text-ink hover:underline">
+              Acceptable use
+            </Link>
+            <Link href="/report" className="underline-offset-4 hover:text-ink hover:underline">
+              Report abuse
+            </Link>
           </span>
           <ThemeToggle />
         </div>

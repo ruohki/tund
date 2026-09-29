@@ -150,6 +150,27 @@ export function signupNoticeEmail(instance: string, email: string, url: string):
   };
 }
 
+export type ReportLine = { hostname: string; what: string; url: string };
+
+export function abuseReportsEmail(instance: string, reports: ReportLine[], openCount: number, queueUrl: string): Mail {
+  const one = reports.length === 1;
+  return {
+    subject: one ? `Abuse report on ${instance}: ${reports[0].hostname}` : `${reports.length} new abuse reports on ${instance}`,
+    ...render(instance, {
+      heading: one ? "New abuse report" : `${reports.length} new abuse reports`,
+      paragraphs: [
+        ...reports
+          .slice(0, 20)
+          .map((r) => `<a href="${esc(r.url)}" style="color:#14171c;font-family:ui-monospace,Menlo,monospace">${esc(r.hostname)}</a> — ${esc(r.what)}`),
+        ...(reports.length > 20 ? [`…and ${reports.length - 20} more.`] : []),
+        `${openCount} ${openCount === 1 ? "report is" : "reports are"} open in total.`,
+      ],
+      action: { label: "Open the abuse queue", url: queueUrl },
+      footer: `You get this because you're an administrator of ${instance}. Reports are batched to at most one email a minute.`,
+    }),
+  };
+}
+
 export function testEmail(instance: string, dashboardUrl: string): Mail {
   return {
     subject: `Test email from ${instance}`,

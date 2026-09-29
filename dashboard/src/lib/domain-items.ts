@@ -29,6 +29,8 @@ export async function loadDomainItems(userId: string, teamId: string | null): Pr
     isDefault: Boolean(r.is_default),
     teamId: r.team_id ?? null,
     createdAt: (r.created_at as Date).toISOString(),
+    approval: r.approval ?? "approved",
+    reviewReason: (r.risk?.review?.reason as string | undefined) ?? "",
   }));
 }
 

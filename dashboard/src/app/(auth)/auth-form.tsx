@@ -3,16 +3,20 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Field, FormMessage, Input } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
+import { Turnstile } from "@/components/turnstile";
 import type { FormState } from "@/app/actions/auth";
 
 export function AuthForm({
   action,
   mode,
   next,
+  turnstileSiteKey,
 }: {
   action: (s: FormState, fd: FormData) => Promise<FormState>;
   mode: "login" | "setup" | "signup";
   next?: string;
+  /** Sign-up only: Cloudflare Turnstile, when the operator configured it. */
+  turnstileSiteKey?: string | null;
 }) {
   const [state, formAction] = useActionState(action, null);
   // A redirect to /login keeps the original #fragment in the address bar but the
@@ -47,6 +51,23 @@ export function AuthForm({
           minLength={mode === "login" ? undefined : 8}
         />
       </Field>
+      {mode === "signup" ? (
+        <label className="flex items-start gap-2.5 text-[13px] leading-5 text-ink-2">
+          <input type="checkbox" name="terms" required className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--ink)]" />
+          <span>
+            I agree to the{" "}
+            <a href="/terms" target="_blank" className="font-medium text-ink underline underline-offset-4">
+              Terms of Service
+            </a>{" "}
+            and the{" "}
+            <a href="/acceptable-use" target="_blank" className="font-medium text-ink underline underline-offset-4">
+              Acceptable Use Policy
+            </a>
+            .
+          </span>
+        </label>
+      ) : null}
+      {mode === "signup" && turnstileSiteKey ? <Turnstile siteKey={turnstileSiteKey} reset={state} /> : null}
       <FormMessage state={state} />
       <SubmitButton className="mt-1 w-full" pendingText={mode === "login" ? "Signing in…" : "Creating account…"}>
         {mode === "login" ? "Sign in" : mode === "setup" ? "Create admin account" : "Create account"}

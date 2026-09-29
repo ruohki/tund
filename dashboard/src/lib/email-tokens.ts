@@ -64,3 +64,15 @@ export function rateLimited(key: string, max: number, windowMs: number): boolean
   if (map.size > 10000) map.clear();
   return false;
 }
+
+/** Whether `key` already has `max` hits in the window, without recording one. */
+export function rateExceeded(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  return ((g.__tundRate ??= new Map<string, number[]>()).get(key) ?? []).filter((t) => now - t < windowMs).length >= max;
+}
+
+/** Records one hit for `key` (pairs with rateExceeded when only successes should count). */
+export function rateRecord(key: string) {
+  const map = (g.__tundRate ??= new Map<string, number[]>());
+  map.set(key, [...(map.get(key) ?? []).filter((t) => Date.now() - t < 24 * 3600_000), Date.now()]);
+}

@@ -7,6 +7,7 @@ import { signupAction } from "@/app/actions/auth";
 import { AuthForm } from "../auth-form";
 import { publicPageMetadata, siteInfo } from "@/lib/seo";
 import { NextHint } from "../next-hint";
+import { turnstileSiteKey } from "@/lib/turnstile";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { name } = await siteInfo();
@@ -31,7 +32,7 @@ export default async function SignupPage({ searchParams }: PageProps<"/signup">)
         through this browser.
       </p>
       <NextHint next={next} />
-      <AuthForm action={signupAction} mode="signup" next={next} />
+      <AuthForm action={signupAction} mode="signup" next={next} turnstileSiteKey={await turnstileSiteKey()} />
       <p className="mt-6 text-[13px] text-ink-2">
         Already have an account?{" "}
         <Link href={withNext("/login", next)} className="font-medium text-ink underline underline-offset-4">
