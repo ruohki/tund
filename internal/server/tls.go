@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/libdns/bunny"
 	"github.com/libdns/cloudflare"
 	hetznerlegacy "github.com/libdns/hetzner"
 	hetzner "github.com/libdns/hetzner/v2"
@@ -82,6 +83,8 @@ func newCerts(s *Server) *Certs {
 			propagationDelay = time.Minute
 		case "cloudflare":
 			provider = &cloudflare.Provider{APIToken: s.cfg.DNSAPIToken}
+		case "bunny":
+			provider = &bunny.Provider{AccessKey: s.cfg.DNSAPIToken}
 		}
 		wildcardCfg = certmagic.New(cache, certmagic.Config{Storage: storage, Logger: logger})
 		wildcardCfg.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(wildcardCfg, certmagic.ACMEIssuer{

@@ -143,9 +143,9 @@ func LoadConfig() (*Config, error) {
 		errs = append(errs, errors.New("TUND_TLS_MODE=manual needs TUND_TLS_CERT_FILE and TUND_TLS_KEY_FILE"))
 	}
 	switch c.DNSProvider {
-	case "", "hetzner", "hetzner-legacy", "cloudflare":
+	case "", "hetzner", "hetzner-legacy", "cloudflare", "bunny":
 	default:
-		errs = append(errs, fmt.Errorf("TUND_DNS_PROVIDER %q is not supported (hetzner, hetzner-legacy, cloudflare)", c.DNSProvider))
+		errs = append(errs, fmt.Errorf("TUND_DNS_PROVIDER %q is not supported (hetzner, hetzner-legacy, cloudflare, bunny)", c.DNSProvider))
 	}
 	if c.DNSProvider != "" && c.DNSAPIToken == "" {
 		errs = append(errs, errors.New("TUND_DNS_PROVIDER needs TUND_DNS_API_TOKEN"))

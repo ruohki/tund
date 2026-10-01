@@ -49,7 +49,7 @@ Set `TUND_ALLOW_SIGNUP=true`. Signed-out visitors then get a landing page and ca
 | setup | how |
 | --- | --- |
 | default | Certificates are issued on demand per hostname via HTTP-01/TLS-ALPN-01. Only hostnames with a live tunnel, a reservation or a verified custom domain qualify, so scanners can't burn your rate limit. The client re-requests its last random subdomain so certificates get reused. |
-| wildcard via DNS-01 (recommended) | Set `TUND_DNS_PROVIDER=hetzner` (Hetzner Cloud DNS API token), `hetzner-legacy` (dns.hetzner.com token) or `cloudflare`, plus `TUND_DNS_API_TOKEN`. One `*.base` certificate then covers every tunnel. |
+| wildcard via DNS-01 (recommended) | Set `TUND_DNS_PROVIDER=hetzner` (Hetzner Cloud DNS API token), `hetzner-legacy` (dns.hetzner.com token), `cloudflare` or `bunny` (bunny.net account API key), plus `TUND_DNS_API_TOKEN`. One `*.base` certificate then covers every tunnel. |
 | own certificate | Set `TUND_TLS_MODE=manual` with `TUND_TLS_CERT_FILE` / `TUND_TLS_KEY_FILE` (mount them into the `server` container). |
 | behind another proxy | Set `TUND_TLS_MODE=off`. tund-server then speaks plain HTTP; set `TUND_PUBLIC_SCHEME=https` if the proxy terminates TLS. |
 

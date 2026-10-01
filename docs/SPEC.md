@@ -114,7 +114,7 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 | `TUND_PUBLIC_SCHEME` / `TUND_PUBLIC_PORT` | `https` / `` | for building public URLs (dev: `http` / `8080`) |
 | `TUND_ACME_EMAIL`, `TUND_ACME_CA` | | CA directory URL (e.g. LE staging) |
 | `TUND_CERT_DIR` | `/data/certs` | certmagic storage |
-| `TUND_DNS_PROVIDER`, `TUND_DNS_API_TOKEN` | | `hetzner` (Cloud DNS API), `hetzner-legacy`, `cloudflare` → wildcard cert for the base domain via DNS-01 |
+| `TUND_DNS_PROVIDER`, `TUND_DNS_API_TOKEN` | | `hetzner` (Cloud DNS API), `hetzner-legacy`, `cloudflare`, `bunny` → wildcard cert for the base domain via DNS-01 |
 | `TUND_TLS_CERT_FILE`, `TUND_TLS_KEY_FILE` | | `manual` mode: wildcard cert for the base domain |
 | `TUND_CAPTURE_MAX_BODY` | `262144` | bytes stored per body |
 | `TUND_RETENTION_DAYS` | `7` | |
