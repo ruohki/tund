@@ -169,6 +169,7 @@ func humanBytes(n int64) string {
 }
 
 func (s *Server) addUsage(m *accountMeter, in, out int64) {
+	s.traffic.Add(in + out)
 	if in > 0 {
 		m.pendingIn.Add(in)
 	}

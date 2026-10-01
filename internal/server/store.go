@@ -673,24 +673,35 @@ func (s *Store) CreateAbuseReport(ctx context.Context, r AbuseReport) (string, e
 
 // --- cluster ---
 
-func (s *Store) UpsertNode(ctx context.Context, n nodeInfo) error {
-	_, err := s.pool.Exec(ctx, `insert into nodes (name, role, region, relay_url, relay_cert_sha256, version, started_at, last_seen)
-		values ($1, $2, $3, $4, $5, $6, now(), now())
+func (s *Store) UpsertNode(ctx context.Context, n nodeInfo, m nodeMetrics) error {
+	_, err := s.pool.Exec(ctx, `insert into nodes (name, role, region, relay_url, relay_cert_sha256, version, started_at, last_seen,
+			public_ip, capacity_mbps, cpus, cpu_pct, load1, mem_total, mem_used, net_in_rate, net_out_rate, tunnel_rate, sessions, tunnels, metrics_at)
+		values ($1, $2, $3, $4, $5, $6, now(), now(), $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
 		on conflict (name) do update set role = excluded.role, region = excluded.region, relay_url = excluded.relay_url,
 			relay_cert_sha256 = excluded.relay_cert_sha256, version = excluded.version, last_seen = now(),
-			started_at = case when nodes.relay_cert_sha256 = excluded.relay_cert_sha256 then nodes.started_at else now() end`,
-		n.Name, n.Role, n.Region, n.RelayURL, n.CertSHA, n.Version)
+			started_at = case when nodes.relay_cert_sha256 = excluded.relay_cert_sha256 then nodes.started_at else now() end,
+			public_ip = excluded.public_ip, capacity_mbps = excluded.capacity_mbps, cpus = excluded.cpus, cpu_pct = excluded.cpu_pct,
+			load1 = excluded.load1, mem_total = excluded.mem_total, mem_used = excluded.mem_used, net_in_rate = excluded.net_in_rate,
+			net_out_rate = excluded.net_out_rate, tunnel_rate = excluded.tunnel_rate, sessions = excluded.sessions,
+			tunnels = excluded.tunnels, metrics_at = now()`,
+		n.Name, n.Role, n.Region, n.RelayURL, n.CertSHA, n.Version,
+		m.PublicIP, m.CapacityMbps, m.CPUs, m.CPUPct, m.Load1, m.MemTotal, m.MemUsed, m.NetInRate, m.NetOutRate, m.TunnelRate, m.Sessions, m.Tunnels)
 	return err
 }
 
 func (s *Store) Nodes(ctx context.Context) ([]nodeInfo, error) {
-	rows, err := s.pool.Query(ctx, `select name, role, region, relay_url, relay_cert_sha256, version, last_seen from nodes order by name`)
+	rows, err := s.pool.Query(ctx, `select name, role, region, relay_url, relay_cert_sha256, version, last_seen,
+		public_ip, capacity_mbps, cpus, cpu_pct, load1, mem_total, mem_used, net_in_rate, net_out_rate, tunnel_rate, sessions, tunnels, metrics_at
+		from nodes order by name`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (nodeInfo, error) {
 		var n nodeInfo
-		return n, r.Scan(&n.Name, &n.Role, &n.Region, &n.RelayURL, &n.CertSHA, &n.Version, &n.LastSeen)
+		m := &n.Metrics
+		return n, r.Scan(&n.Name, &n.Role, &n.Region, &n.RelayURL, &n.CertSHA, &n.Version, &n.LastSeen,
+			&m.PublicIP, &m.CapacityMbps, &m.CPUs, &m.CPUPct, &m.Load1, &m.MemTotal, &m.MemUsed, &m.NetInRate, &m.NetOutRate,
+			&m.TunnelRate, &m.Sessions, &m.Tunnels, &n.MetricsAt)
 	})
 }
 

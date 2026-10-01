@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -39,6 +40,11 @@ type Config struct {
 	DNSAPIToken string
 	TLSCertFile string
 	TLSKeyFile  string
+
+	// PublicIP is the address DNS should publish for this node (empty =
+	// detected); CapacityMbps its uplink. Both are reported with the metrics.
+	PublicIP     string
+	CapacityMbps int
 
 	CaptureMaxBody             int
 	RetentionDays              int
@@ -225,6 +231,12 @@ func LoadConfig() (*Config, error) {
 		errs = append(errs, fmt.Errorf("TUND_ROLE must be control or edge (got %q)", c.Role))
 	}
 	c.NodeRegion = env("TUND_NODE_REGION", "")
+	if c.PublicIP = env("TUND_PUBLIC_IP", ""); c.PublicIP != "" && net.ParseIP(c.PublicIP) == nil {
+		errs = append(errs, fmt.Errorf("TUND_PUBLIC_IP must be an IP address (got %q)", c.PublicIP))
+	}
+	if c.CapacityMbps, err = envInt("TUND_NODE_CAPACITY_MBPS", 0); err != nil {
+		errs = append(errs, err)
+	}
 	c.RelayAddr = env("TUND_RELAY_ADDR", ":4443")
 	c.RelayURL = env("TUND_RELAY_URL", "")
 	if c.Role == "edge" && c.RelayURL == "" {

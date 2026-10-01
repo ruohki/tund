@@ -397,12 +397,15 @@ Goal: serve clients and visitors from the nearest location with **one global dom
 | `TUND_ROLE` | `control` | `control`: next to the dashboard (proxies the dashboard host to `TUND_DASHBOARD_UPSTREAM`); `edge`: routing only — dashboard-host requests (except `/_tund/ws`, install scripts, downloads) are relayed to a control node |
 | `TUND_RELAY_ADDR` | `:4443` | listener for node-to-node traffic (TLS) |
 | `TUND_RELAY_URL` | `""` | how other nodes reach this node's relay, `host:port` (empty = single-node mode, relay disabled) |
+| `TUND_PUBLIC_IP` | detected | the address DNS should publish for this node; detected from the outbound route when it is a public address (set it behind NAT) |
+| `TUND_NODE_CAPACITY_MBPS` | `0` | uplink capacity, shown next to network usage (0 = unknown) |
 
 Nodes need the same `TUND_SECRET`, `TUND_BASE_DOMAIN`, `TUND_DASHBOARD_HOST`, DNS provider settings and database. The relay port must be reachable between nodes only (firewall).
 
 ### Shared state
 
 * `nodes(name pk, role, region, relay_url, relay_cert_sha256, version, started_at, last_seen)` — heartbeat every 10 s; a node is **alive** while `last_seen > now() - 45 s`.
+* Host metrics (migration 0015), written with every heartbeat: `public_ip`, `capacity_mbps`, `cpus`, `cpu_pct` (busy share of all cores since the previous heartbeat), `load1`, `mem_total`/`mem_used` (bytes, used = total − available), `net_in_rate`/`net_out_rate` (bytes/s on the interface holding `public_ip`, or all physical interfaces), `tunnel_rate` (bytes/s through tunnels, both directions), `sessions`, `tunnels`, `metrics_at`. Read from `/proc` (host values: the server runs with host networking); NULL where not measured (non-Linux, first heartbeat). Admins see them under `/admin/nodes`, refreshed every 10 s. External tools (e.g. a DNS balancer) can read the same table.
 * `tunnels.node` / `agent_sessions.node`: where a tunnel lives. On start a node ends only **its own** stale rows. The unique index on online hostnames (and a new one on online TCP ports) makes bindings exclusive across nodes: a bind that hits another node's tunnel for the same account asks that node to take over (the owner closes its session if it no longer answers pings, like the single-node reconnect case); a live tunnel of another account → "in use". Tunnels of dead nodes are ended by any node that finds them.
 * Certificates: certmagic storage in Postgres (`certmagic_data`, `certmagic_locks`) so the wildcard, on-demand certificates and HTTP-01/TLS-ALPN challenges are shared by all nodes.
 * `tund_tunnels` notifications gain `node`, `proto`, `remote_port`; nodes keep a short-lived cache hostname/port → node.

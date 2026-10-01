@@ -196,7 +196,8 @@ Run extra `tund-server` nodes in other regions so clients and visitors connect t
 
 * **Routing**: point the service domain (`tund.io` and `*.tund.io`) at all nodes with GeoDNS or anycast (e.g. Bunny Magic Containers anycast endpoints). A client connects to its nearest node; a visitor lands on theirs. If the tunnel lives on another node, the visitor's node relays the traffic there over an authenticated TLS link. That link is pinned to a per-node certificate published in the database, and every frame is HMAC-signed with `TUND_SECRET`. This covers HTTP, WebSockets, TLS passthrough and TCP.
 * **Shared state**: every node uses the control node's Postgres, including the certificate store (`TUND_CERT_STORAGE=postgres`). The wildcard, custom-domain certificates, ACME challenges and the ACME account (important for CAA) are shared. On first start with Postgres storage, a node imports the existing file-based certificates.
-* **Resilience**: a node that stops heartbeating for 45 s is considered dead and its tunnels are ended, so clients can reconnect elsewhere. A reconnecting client takes its hostnames over from its old, dead session on another node. Admins see nodes, regions and tunnel counts in the dashboard.
+* **Resilience**: a node that stops heartbeating for 45 s is considered dead and its tunnels are ended, so clients can reconnect elsewhere. A reconnecting client takes its hostnames over from its old, dead session on another node.
+* **Monitoring**: every node writes its host metrics (CPU, load, memory, network, tunnel traffic, clients) to the database with its heartbeat. Admins see them under *Admin → Nodes*. Set `TUND_PUBLIC_IP` behind NAT (otherwise it is detected) and `TUND_NODE_CAPACITY_MBPS` to show network usage against the uplink.
 
 Setup:
 

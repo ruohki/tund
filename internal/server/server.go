@@ -53,6 +53,8 @@ type Server struct {
 	blocked   atomic.Pointer[map[string]string] // blocked hostnames → reason
 	phish     *phishScanner
 	cluster   *cluster // nil in single-node mode
+	host      *hostCollector
+	traffic   atomic.Int64 // tunnel bytes through this node, both directions
 	startedAt time.Time
 
 	latestClientVersion atomic.Pointer[string] // newest client release, see clientupdate.go
@@ -66,6 +68,7 @@ func New(cfg *Config, store *Store) (*Server, error) {
 		cfg:       cfg,
 		store:     store,
 		reg:       NewRegistry(),
+		host:      newHostCollector(cfg),
 		recorder:  NewRecorder(store),
 		signer:    signer{key: []byte(cfg.Secret)},
 		jtis:      map[string]time.Time{},

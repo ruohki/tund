@@ -45,6 +45,8 @@ const (
 type nodeInfo struct {
 	Name, Role, Region, RelayURL, CertSHA, Version string
 	LastSeen                                       time.Time
+	Metrics                                        nodeMetrics // as last reported
+	MetricsAt                                      *time.Time
 }
 
 func (n nodeInfo) alive() bool { return time.Since(n.LastSeen) < nodeDeadAfter }
@@ -143,8 +145,9 @@ func (c *cluster) run(ctx context.Context) error {
 
 func (c *cluster) heartbeat(ctx context.Context) error {
 	st := c.s.store
+	metrics := c.s.host.collect(c.s.traffic.Load(), len(c.s.reg.Sessions()), len(c.s.reg.Tunnels()))
 	if err := st.UpsertNode(ctx, nodeInfo{Name: c.name, Role: c.s.cfg.Role, Region: c.s.cfg.NodeRegion,
-		RelayURL: c.s.cfg.RelayURL, CertSHA: c.certSHA, Version: Version}); err != nil {
+		RelayURL: c.s.cfg.RelayURL, CertSHA: c.certSHA, Version: Version}, metrics); err != nil {
 		return err
 	}
 	nodes, err := st.Nodes(ctx)
@@ -675,8 +678,12 @@ func (s *Server) nodeStatus(ctx context.Context) []map[string]any {
 	counts, _ := s.store.TunnelsPerNode(ctx)
 	out := []map[string]any{}
 	for _, n := range nodes {
+		m := n.Metrics
 		out = append(out, map[string]any{"name": n.Name, "role": n.Role, "region": n.Region, "alive": n.alive(),
-			"tunnels": counts[n.Name], "version": n.Version, "last_seen": n.LastSeen})
+			"tunnels": counts[n.Name], "version": n.Version, "last_seen": n.LastSeen,
+			"public_ip": m.PublicIP, "capacity_mbps": m.CapacityMbps, "cpus": m.CPUs, "cpu_pct": m.CPUPct, "load1": m.Load1,
+			"mem_total": m.MemTotal, "mem_used": m.MemUsed, "net_in_rate": m.NetInRate, "net_out_rate": m.NetOutRate,
+			"tunnel_rate": m.TunnelRate, "sessions": m.Sessions, "metrics_at": n.MetricsAt})
 	}
 	return out
 }

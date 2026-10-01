@@ -131,6 +131,21 @@ export function formatTransfer(bytes: number): string {
   return `${v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
+/** Network rate in bits per second from bytes per second ("12.3 Mbit/s"). */
+export function formatBitRate(bytesPerSec: number | null | undefined): string {
+  if (bytesPerSec == null || !Number.isFinite(bytesPerSec)) return "—";
+  const bits = bytesPerSec * 8;
+  if (bits < 1000) return `${Math.round(bits)} bit/s`;
+  const units = ["kbit/s", "Mbit/s", "Gbit/s"];
+  let v = bits / 1000;
+  let i = 0;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
 export function formatKbps(kbps: number): string {
   if (!kbps) return "unlimited";
   return kbps >= 1000 ? `${(kbps / 1000).toLocaleString("en", { maximumFractionDigits: 1 })} Mbit/s` : `${kbps} kbit/s`;
