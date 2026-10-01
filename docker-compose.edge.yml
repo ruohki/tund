@@ -19,6 +19,8 @@ services:
       TUND_ROLE: edge
       TUND_NODE_NAME: ${TUND_NODE_NAME:?set TUND_NODE_NAME, e.g. ash-1}
       TUND_NODE_REGION: ${TUND_NODE_REGION:-}
+      TUND_PUBLIC_IP: ${TUND_PUBLIC_IP:-}                 # published in DNS; empty = detected
+      TUND_NODE_CAPACITY_MBPS: ${TUND_NODE_CAPACITY_MBPS:-0}  # uplink, for the Nodes overview
       TUND_RELAY_ADDR: ${TUND_RELAY_ADDR:-:4443}
       TUND_RELAY_URL: ${TUND_RELAY_URL:?set TUND_RELAY_URL, the host:port other nodes use to reach this relay}
       TUND_CERT_STORAGE: postgres
@@ -30,11 +32,34 @@ services:
       TUND_INTERNAL_ADDR: 127.0.0.1:4040
       TUND_TLS_MODE: ${TUND_TLS_MODE:-acme}
       TUND_ACME_EMAIL: ${TUND_ACME_EMAIL:-}
+      TUND_ACME_CA: ${TUND_ACME_CA:-}
       TUND_DNS_PROVIDER: ${TUND_DNS_PROVIDER:-}
       TUND_DNS_API_TOKEN: ${TUND_DNS_API_TOKEN:-}
+      TUND_PUBLIC_SCHEME: ${TUND_PUBLIC_SCHEME:-}
+      TUND_PUBLIC_PORT: ${TUND_PUBLIC_PORT:-}
       TUND_TCP_PORTS: ${TUND_TCP_PORTS:-}
       TUND_TCP_HOST: ${TUND_TCP_HOST:-}
-      TUND_CUSTOM_DOMAINS: ${TUND_CUSTOM_DOMAINS:-false}   # same default as the control node
+      TUND_DOWNLOAD_BASE_URL: ${TUND_DOWNLOAD_BASE_URL:-}
+      TUND_REDIRECT_HOSTS: ${TUND_REDIRECT_HOSTS:-}
+      TUND_DEBUG: ${TUND_DEBUG:-}
+      # Defaults for settings not saved under Admin → Settings: keep them equal
+      # to the control node's, or accounts get different limits per node.
+      TUND_MAX_TUNNELS_PER_USER: ${TUND_MAX_TUNNELS_PER_USER:-0}
+      TUND_MAX_PINNED_PER_USER: ${TUND_MAX_PINNED_PER_USER:-0}
+      TUND_MAX_DOMAINS_PER_USER: ${TUND_MAX_DOMAINS_PER_USER:-0}
+      TUND_MAX_TEAMS_PER_USER: ${TUND_MAX_TEAMS_PER_USER:-3}
+      TUND_CUSTOM_DOMAINS: ${TUND_CUSTOM_DOMAINS:-false}
+      TUND_AUTO_PIN: ${TUND_AUTO_PIN:-true}
+      TUND_BROWSER_WARNING: ${TUND_BROWSER_WARNING:-false}
+      TUND_ABUSE_CONTACT: ${TUND_ABUSE_CONTACT:-}
+      TUND_CAPTURE_MAX_BODY: ${TUND_CAPTURE_MAX_BODY:-262144}
+      TUND_RETENTION_DAYS: ${TUND_RETENTION_DAYS:-7}
+      TUND_BANDWIDTH_KBPS: ${TUND_BANDWIDTH_KBPS:-0}
+      TUND_TRANSFER_GB: ${TUND_TRANSFER_GB:-0}
+      TUND_UNTRUSTED_CUSTOM_DOMAINS: ${TUND_UNTRUSTED_CUSTOM_DOMAINS:-review}
+      TUND_UNTRUSTED_TCP: ${TUND_UNTRUSTED_TCP:-true}
+      TUND_UNTRUSTED_TLS: ${TUND_UNTRUSTED_TLS:-true}
+      TUND_SAFE_BROWSING_API_KEY: ${TUND_SAFE_BROWSING_API_KEY:-}
       TZ: ${TZ:-UTC}
     volumes:
       - tund-data:/data
