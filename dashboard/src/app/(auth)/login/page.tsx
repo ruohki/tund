@@ -11,6 +11,7 @@ import { NextHint } from "../next-hint";
 import { OAuthButtons } from "../oauth-buttons";
 import { enabledProviders } from "@/lib/oauth";
 import { oauthError } from "@/lib/oauth-shared";
+import { PasskeyButton } from "@/components/passkey-button";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { name } = await siteInfo();
@@ -18,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next: rawNext, reset, error } = await searchParams;
+  const { next: rawNext, reset, error, two_factor: twoFactor } = await searchParams;
   const next = safeNext(rawNext);
   if (!(await usersExist())) redirect(withNext("/setup", next));
   if (await getCurrentUser()) redirect(next);
@@ -34,6 +35,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           Your password was changed and you were signed out everywhere. Sign in with the new password.
         </p>
       ) : null}
+      {twoFactor === "expired" || twoFactor === "attempts" ? (
+        <p role="alert" className="mb-5 rounded-md border border-danger/30 bg-danger-wash px-3 py-2 text-[13px] text-danger">
+          {twoFactor === "attempts"
+            ? "Too many wrong codes. Sign in again to get new attempts."
+            : "The sign-in took too long. Start again."}
+        </p>
+      ) : null}
       {oauthFailed ? (
         <p role="alert" className="mb-5 rounded-md border border-danger/30 bg-danger-wash px-3 py-2 text-[13px] text-danger">
           {oauthFailed}
@@ -42,6 +50,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <NextHint next={next} />
       <OAuthButtons providers={providers} next={next} terms={signup.allowed} />
       <AuthForm action={loginAction} mode="login" next={next} />
+      <PasskeyButton mode="login" next={next} className="mt-3" />
       {mailOn ? (
         <p className="mt-4 text-[13px]">
           <Link href="/forgot-password" className="text-ink-2 underline underline-offset-4 hover:text-ink">

@@ -8,7 +8,7 @@ import { config } from "@/lib/config";
 import { db, notify } from "@/lib/db";
 import { issueEmailToken } from "@/lib/email-tokens";
 import { internalApi, InternalApiError } from "@/lib/internal";
-import { resetPasswordEmail, sendMail, smtpConfigured, testEmail } from "@/lib/mail";
+import { resetPasswordEmail, securityNoticeEmail, sendMail, smtpConfigured, testEmail, trySendMail } from "@/lib/mail";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { isUuid } from "@/lib/requests";
 import {
@@ -130,6 +130,31 @@ export async function sendResetEmailAction(_: FormState, fd: FormData): Promise<
   }
   await audit(actorOf(admin), "user.reset_password", u.email);
   return { ok: `Sent a reset link to ${u.email}. It works for 1 hour.` };
+}
+
+/** For a lost phone: turns off the user's two-factor authentication (passkeys stay). */
+export async function adminDisableTwoFactorAction(fd: FormData) {
+  const admin = await requireAdmin();
+  const u = await targetUser(str(fd, "id"));
+  if (!u) return;
+  await db().begin(async (tx) => {
+    await tx`update users set totp_secret = '', totp_enabled_at = null, totp_last_step = 0 where id = ${u.id}`;
+    await tx`delete from user_recovery_codes where user_id = ${u.id}`;
+  });
+  await audit(actorOf(admin), "user.2fa_off", u.email, { by_admin: true });
+  if (await smtpConfigured()) {
+    const { instance_name } = await getSettings();
+    await trySendMail(
+      u.email,
+      securityNoticeEmail(
+        instance_name,
+        "Two-factor authentication is off",
+        "An administrator turned off two-factor authentication for your account. Turn it on again in your settings.",
+        `${config().dashboardUrl}/settings#security`,
+      ),
+    );
+  }
+  refresh();
 }
 
 export async function deleteUserAction(fd: FormData) {

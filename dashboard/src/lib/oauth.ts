@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { safeNext, startSession, usersExist, type User } from "./auth";
+import { safeNext, signIn, usersExist, type User } from "./auth";
 import { notifyAdminsOfSignup } from "./account-mail";
 import { audit } from "./audit";
 import { clientIp } from "./client-ip";
@@ -229,8 +229,8 @@ export async function finishOAuth(p: OAuthProviderId, query: URLSearchParams, cu
     }
   }
   await db()`update user_identities set last_used_at = now() where provider = ${p} and subject = ${profile.subject}`;
-  await startSession(userId);
-  return flow.next;
+  // Two-factor applies to Google/GitHub sign-ins too, or they would get around it.
+  return signIn(userId, flow.next);
 }
 
 /** A new account from a provider profile, under the same rules as the sign-up form. */

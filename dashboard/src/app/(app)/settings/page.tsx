@@ -10,6 +10,9 @@ import { OAUTH_PROVIDERS, oauthError, PROVIDER_LABEL } from "@/lib/oauth-shared"
 import { ProviderIcon } from "@/components/provider-icons";
 import { PasswordForm, ProfileForm } from "./forms";
 import { TransferUsage } from "@/components/transfer-usage";
+import { twoFactorStatus } from "@/lib/two-factor";
+import { removePasskeyAction } from "@/app/actions/two-factor";
+import { AddPasskey, TwoFactorSettings } from "./security-forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -23,14 +26,16 @@ function describeAgent(ua: string) {
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireUser();
   const session = await getSession();
-  const { oauth_error: oauthErr, oauth_linked: linkedNow } = await searchParams;
-  const [sessions, providers, identities, [pw]] = await Promise.all([
+  const { oauth_error: oauthErr, oauth_linked: linkedNow, passkey_error: passkeyErr } = await searchParams;
+  const [sessions, providers, identities, [pw], twoFactor, passkeys] = await Promise.all([
     db()`
       select id, user_agent, ip, created_at, expires_at from sessions
       where user_id = ${user.id} and expires_at > now() order by created_at desc`,
     enabledProviders(),
     identitiesOf(user.id),
     db()`select password_hash is not null as has from users where id = ${user.id}`,
+    twoFactorStatus(user.id),
+    db()`select id, name, created_at, last_used_at, backed_up from user_passkeys where user_id = ${user.id} order by created_at`,
   ]);
   const hasPassword = Boolean(pw?.has);
   // Enabled providers, plus ones still connected after an admin turned them off.
@@ -40,7 +45,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
 
   return (
     <>
-      <PageHeader title="Settings" description="Your profile, password and signed-in browsers." />
+      <PageHeader title="Settings" description="Your profile, how you sign in, and signed-in browsers." />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Panel title="Profile" bodyClassName="p-4">
           <ProfileForm name={user.name} email={user.email} />
@@ -55,6 +60,60 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           bodyClassName="p-4"
         >
           <PasswordForm hasPassword={hasPassword} />
+        </Panel>
+      </div>
+      <div id="security" className="mt-6 grid scroll-mt-6 grid-cols-1 gap-6 lg:grid-cols-2">
+        <Panel
+          title="Two-factor authentication"
+          description="A second step after your password: a code from an authenticator app, a passkey or a recovery code."
+          bodyClassName="p-4"
+        >
+          <TwoFactorSettings
+            on={twoFactor.totp}
+            enabledAt={twoFactor.enabledAt ? twoFactor.enabledAt.toISOString() : null}
+            recoveryLeft={twoFactor.recoveryLeft}
+          />
+        </Panel>
+        <Panel
+          title="Passkeys"
+          description="Sign in with your fingerprint, face or device PIN instead of a password. They also count as the second step of two-factor."
+        >
+          {passkeyErr === "last_method" ? (
+            <p role="alert" className="border-b border-line bg-danger-wash px-4 py-2.5 text-[13px] text-danger">
+              That&apos;s your only way to sign in. Set a password or add another passkey first.
+            </p>
+          ) : null}
+          {passkeys.length ? (
+            <ul className="divide-y divide-line border-b border-line">
+              {passkeys.map((k) => (
+                <li key={k.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-[13.5px] text-ink">
+                      {k.name || "Passkey"}
+                      {k.backed_up ? <Badge tone="outline">Synced</Badge> : null}
+                    </p>
+                    <p className="text-[12px] text-muted">
+                      Added <span title={formatDateTime(k.created_at)}>{timeAgo(k.created_at)}</span>
+                      {k.last_used_at ? (
+                        <>
+                          , last used <span title={formatDateTime(k.last_used_at)}>{timeAgo(k.last_used_at)}</span>
+                        </>
+                      ) : ", never used"}
+                    </p>
+                  </div>
+                  <form action={removePasskeyAction}>
+                    <input type="hidden" name="id" value={k.id} />
+                    <ConfirmSubmit variant="ghost" confirmText="Remove this passkey?">
+                      Remove
+                    </ConfirmSubmit>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="p-4">
+            <AddPasskey />
+          </div>
         </Panel>
       </div>
       {methods.length ? (

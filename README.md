@@ -215,6 +215,10 @@ When a visitor passes a tunnel's password or OIDC check, the edge tells your app
 
 The edge **always removes `X-Tund-*` headers sent by visitors** before adding its own, on every tunnel, so an app can rely on them for requests that arrive through tund. Allow lists also accept `group:<name>` (e.g. `--oidc-allow group:engineering`); ask your IdP for the `profile` and `groups` scopes.
 
+## Dashboard sign-in
+
+Besides email and password (and optionally Google or GitHub), accounts can add **passkeys** (fingerprint, face or device PIN, also synced ones like iCloud Keychain or 1Password) and turn on **two-factor authentication** with an authenticator app, both under *Settings*. With two-factor on, every password or Google/GitHub sign-in also asks for a code, a passkey or one of ten recovery codes. Admins can turn two-factor off for a user who lost their phone.
+
 ## Teams
 
 Teams share OIDC providers and domains between accounts. Create one under *Teams*, then invite people: existing users by email, everyone else with an invite link.

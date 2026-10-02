@@ -15,7 +15,7 @@ import { listTunnels } from "@/lib/metrics";
 import { isUuid } from "@/lib/requests";
 import { AuthBadge, Badge, PageHeader, Panel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/client-ui";
-import { deleteUserAction } from "@/app/actions/admin";
+import { adminDisableTwoFactorAction, deleteUserAction } from "@/app/actions/admin";
 import { FlagSwitch, ResetPasswordButton, StopTunnelForm } from "../../admin-forms";
 import { FlagUserForm } from "../../abuse/abuse-forms";
 import { ApprovalBadge } from "../../domains/approval-badge";
@@ -44,7 +44,8 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
         (select count(*)::int from requests where user_id = ${id} and started_at > now() - interval '7 days') as req7d,
         (select coalesce(sum(req_body_size + resp_body_size), 0)::bigint from requests
           where user_id = ${id} and started_at > now() - interval '7 days') as bytes7d,
-        (select count(*)::int from agent_sessions where user_id = ${id}) as client_sessions`,
+        (select count(*)::int from agent_sessions where user_id = ${id}) as client_sessions,
+        (select count(*)::int from user_passkeys where user_id = ${id}) as passkeys`,
     smtpConfigured(),
     monthUsage(id),
     getSettings(),
@@ -76,6 +77,12 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
               </Badge>
             ))}
             {u.password_hash === null ? <Badge tone="outline">No password</Badge> : null}
+            {u.totp_secret ? <Badge tone="ok">Two-factor</Badge> : null}
+            {counts.passkeys ? (
+              <Badge tone="outline">
+                {counts.passkeys} {counts.passkeys === 1 ? "passkey" : "passkeys"}
+              </Badge>
+            ) : null}
             <span className="text-muted">joined {formatDateTime(u.created_at)}</span>
           </span>
         }
@@ -129,6 +136,21 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             help={u.email_verified_at ? `Since ${formatDateTime(u.email_verified_at)}.` : "Mark the address as confirmed without the email link."}
             disabled={Boolean(u.email_verified_at)}
           />
+          {u.totp_secret ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-[13.5px] font-medium text-ink">Two-factor authentication</p>
+                <p className="text-[12.5px] text-muted">
+                  On since {u.totp_enabled_at ? formatDateTime(u.totp_enabled_at) : "unknown"}. Turn it off for a user who lost
+                  their phone and recovery codes; they get an email.
+                </p>
+              </div>
+              <form action={adminDisableTwoFactorAction}>
+                <input type="hidden" name="id" value={u.id} />
+                <ConfirmSubmit confirmText="Turn off two-factor?">Turn off</ConfirmSubmit>
+              </form>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 py-3">
             <ResetPasswordButton id={u.id} disabled={!mailOn} />
             {!mailOn ? <p className="text-[12.5px] text-muted">Needs email (Admin → Email).</p> : null}

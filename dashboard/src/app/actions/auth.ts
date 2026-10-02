@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { endSession, safeNext, startSession, usersExist, withNext } from "@/lib/auth";
+import { endSession, safeNext, signIn, startSession, usersExist, withNext } from "@/lib/auth";
 import { hashPassword, MIN_PASSWORD_LENGTH, verifyPassword } from "@/lib/password";
 import { checkEmail } from "@/lib/validate";
 import { signupCheck } from "@/lib/signup";
@@ -30,8 +30,7 @@ export async function loginAction(_: FormState, fd: FormData): Promise<FormState
   if (!user || !ok) return { error: "Email or password is incorrect." };
   // Only revealed after the password matched, so it can't be used to probe for accounts.
   if (user.disabled_at) return { error: "This account has been disabled. Contact an administrator of this server." };
-  await startSession(user.id);
-  redirect(safeNext(fd.get("next")));
+  redirect(await signIn(user.id, safeNext(fd.get("next"))));
 }
 
 type AccountOptions = {

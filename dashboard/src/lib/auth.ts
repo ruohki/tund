@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { db } from "./db";
 import { cookieValues, sessionCookieName, sessionCookieSecure } from "./session-cookie";
+import { startFlow, totpEnabled } from "./two-factor";
 
 const SESSION_DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
@@ -52,6 +53,20 @@ export async function startSession(userId: string) {
     path: "/",
     maxAge: SESSION_DAYS * 24 * 60 * 60,
   });
+}
+
+/**
+ * Signs a user in after the first factor (password, Google/GitHub): right away,
+ * or through the second-factor step when two-factor authentication is on.
+ * Returns where to send the browser. Server Actions / Route Handlers only.
+ */
+export async function signIn(userId: string, next: string): Promise<string> {
+  if (await totpEnabled(userId)) {
+    await startFlow("second_factor", { userId, next });
+    return "/login/two-factor";
+  }
+  await startSession(userId);
+  return next;
 }
 
 /** Deletes the current session and clears the cookie. */

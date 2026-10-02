@@ -204,3 +204,19 @@ export async function unverifiedError(user: { emailVerified: boolean; email: str
   if (user.emailVerified || !(await verificationRequired())) return null;
   return `Confirm your email address first: open the link we sent to ${user.email}, or send a new one from the banner above.`;
 }
+
+/** Tells the owner that the way their account signs in changed (two-factor, passkeys). */
+export function securityNoticeEmail(instance: string, heading: string, message: string, url: string): Mail {
+  return {
+    subject: `${heading} (${instance})`,
+    ...render(instance, {
+      heading,
+      paragraphs: [
+        esc(message),
+        "If this wasn't you, change your password now and check the sign-in methods and sessions in your settings.",
+      ],
+      action: { label: "Open your settings", url },
+      footer: `You get this for every change to how your ${instance} account signs in.`,
+    }),
+  };
+}

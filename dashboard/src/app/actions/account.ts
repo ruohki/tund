@@ -65,7 +65,8 @@ export async function disconnectIdentityAction(fd: FormData) {
   if (!isOAuthProvider(provider)) return;
   const [row] = await db()`
     select u.password_hash is not null as has_password,
-           (select count(*)::int from user_identities where user_id = u.id and provider <> ${provider}) as others
+           (select count(*)::int from user_identities where user_id = u.id and provider <> ${provider})
+             + (select count(*)::int from user_passkeys where user_id = u.id) as others
     from users u where u.id = ${user.id}`;
   if (!row?.has_password && !row?.others) redirect("/settings?oauth_error=last_method");
   await db()`delete from user_identities where user_id = ${user.id} and provider = ${provider}`;

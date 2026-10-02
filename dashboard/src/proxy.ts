@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookieValues, sessionCookieName, sessionCookieSecure } from "@/lib/session-cookie";
 
-const PUBLIC_PAGES = new Set(["/login", "/setup", "/signup", "/forgot-password", "/report", "/terms", "/acceptable-use"]);
+const PUBLIC_PAGES = new Set(["/login", "/login/two-factor", "/setup", "/signup", "/forgot-password", "/report", "/terms", "/acceptable-use"]);
 // Links from emails and invites work without a session.
 const PUBLIC_PREFIXES = ["/invite/", "/reset-password/", "/verify-email/", "/auth/oauth/"];
 
