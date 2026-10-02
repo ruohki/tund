@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Activity, Pause, Play, Search, Trash2 } from "lucide-react";
+import { Activity, Download, Pause, Play, Search, Trash2 } from "lucide-react";
 import type { RequestDetail as Detail, RequestSummary } from "@/lib/requests";
 import { formatBytes, formatClock, formatDuration, statusClass } from "@/lib/format";
 import { buttonClass, cn, inputClass, Select, StatusCode } from "../ui";
@@ -9,10 +9,12 @@ import { Command } from "../client-ui";
 import { useLiveEvents } from "../live";
 import { useDisplayTimeZone } from "@/lib/use-hydrated";
 import { RequestDetail } from "./request-detail";
+import { CompareView } from "./compare-view";
 import { clearRequestsAction, replayRequestAction } from "@/app/actions/requests";
 import { useInfiniteScroll } from "@/components/use-infinite-scroll";
 
-type Filters = { host: string; method: string; status: string; q: string };
+/** body: "1" searches q in request and response bodies too. */
+type Filters = { host: string; method: string; status: string; q: string; body: string };
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const STATUSES = [
@@ -23,6 +25,7 @@ const STATUSES = [
   { id: "5xx", label: "5xx" },
 ];
 
+/** Whether a live request belongs in the filtered list (body searches can't tell; see below). */
 function matches(r: RequestSummary, f: Filters) {
   if (f.host && r.hostname !== f.host) return false;
   if (f.method && r.method !== f.method) return false;
@@ -43,17 +46,26 @@ export function Inspector({
   hostnames,
   initialHost,
   initialId,
+  initialCompare = "",
   addresses = [],
   onSwitch,
 }: {
   hostnames: string[];
   initialHost: string;
   initialId: string;
+  initialCompare?: string;
   /** TCP/TLS addresses; picking one switches to the connections view. */
   addresses?: string[];
   onSwitch?: (host: string) => void;
 }) {
-  const [filters, setFilters] = useState<Filters>({ host: initialHost, method: "", status: "", q: "" });
+  const [filters, setFilters] = useState<Filters>({ host: initialHost, method: "", status: "", q: "", body: "" });
+  const [reloads, setReloads] = useState(0);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Picking the second request of a comparison: the first one's id. */
+  const [picking, setPicking] = useState<string | null>(null);
+  const [compare, setCompare] = useState<{ a: string; b: string } | null>(
+    initialId && initialCompare ? { a: initialId, b: initialCompare } : null,
+  );
   const tz = useDisplayTimeZone();
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<RequestSummary[]>([]);
@@ -88,10 +100,26 @@ export function Inspector({
   useEffect(() => {
     const qs = new URLSearchParams();
     if (filters.host) qs.set("host", filters.host);
-    if (selectedId) qs.set("id", selectedId);
+    if (compare) {
+      qs.set("id", compare.a);
+      qs.set("compare", compare.b);
+    } else if (selectedId) qs.set("id", selectedId);
     const next = `/inspect${qs.size ? `?${qs}` : ""}`;
     if (next !== window.location.pathname + window.location.search) window.history.replaceState(null, "", next);
-  }, [filters.host, selectedId]);
+  }, [filters.host, selectedId, compare]);
+
+  // Escape stops picking a request to compare with.
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicking(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picking]);
+  useEffect(() => () => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+  }, []);
 
   // Load the list whenever filters change.
   useEffect(() => {
@@ -114,7 +142,7 @@ export function Inspector({
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [filters]);
+  }, [filters, reloads]);
 
   // Load the selected request's details.
   useEffect(() => {
@@ -156,8 +184,20 @@ export function Inspector({
     );
   }, []);
 
+  const bodySearch = Boolean(filters.q && filters.body);
   useLiveEvents((e) => {
-    if (e.type !== "request" || !matches(e.data, filters)) return;
+    if (e.type !== "request") return;
+    if (bodySearch) {
+      // Bodies aren't in live events: ask the server again, at most once a second.
+      if (!paused && !reloadTimer.current) {
+        reloadTimer.current = setTimeout(() => {
+          reloadTimer.current = null;
+          setReloads((n) => n + 1);
+        }, 1000);
+      }
+      return;
+    }
+    if (!matches(e.data, filters)) return;
     if (paused) {
       setBuffered((b) => (b.some((x) => x.id === e.data.id) ? b : [e.data, ...b]));
       return;
@@ -189,6 +229,15 @@ export function Inspector({
   // Older requests load as the list scrolls; the button stays as a fallback.
   const moreRef = useInfiniteScroll(hasMore, items.length, loadMore);
 
+  const replayed = (res: { summary: RequestSummary | null; requestId: string }) => {
+    if (res.summary) {
+      const s = res.summary;
+      setItems((list) => (list.some((x) => x.id === s.id) ? list : [s, ...list]));
+      markFresh(s.id);
+    }
+    if (res.requestId) setSelectedId(res.requestId);
+  };
+
   const replay = () => {
     if (!detail) return;
     setReplayError(null);
@@ -198,14 +247,20 @@ export function Inspector({
         setReplayError(res.error);
         return;
       }
-      if (res.summary) {
-        const s = res.summary;
-        setItems((list) => (list.some((x) => x.id === s.id) ? list : [s, ...list]));
-        markFresh(s.id);
-      }
-      if (res.requestId) setSelectedId(res.requestId);
+      replayed(res);
     });
   };
+
+  const select = (id: string) => {
+    if (picking && id !== picking) {
+      setCompare({ a: picking, b: id });
+      setPicking(null);
+    } else if (!picking) {
+      setCompare(null);
+    }
+    setSelectedId(id);
+  };
+  const pickingSummary = picking ? (items.find((i) => i.id === picking) ?? (detail?.id === picking ? detail : null)) : null;
 
   const clear = async () => {
     if (!confirmClear) {
@@ -214,7 +269,7 @@ export function Inspector({
       return;
     }
     setConfirmClear(false);
-    await clearRequestsAction(filters);
+    await clearRequestsAction({ ...filters, body: filters.body === "1" });
     setItems([]);
     setHasMore(false);
     setSelectedId("");
@@ -227,13 +282,15 @@ export function Inspector({
     const idx = items.findIndex((i) => i.id === selectedId);
     const next = e.key === "ArrowDown" || e.key === "j" ? Math.min(items.length - 1, idx + 1) : Math.max(0, idx - 1);
     const item = items[next];
-    if (item) {
+    if (item && !picking) {
+      setCompare(null);
       setSelectedId(item.id);
       listRef.current?.querySelector(`[data-id="${item.id}"]`)?.scrollIntoView({ block: "nearest" });
     }
   };
 
   const filtered = filters.host || filters.method || filters.status || filters.q;
+  const showDetail = Boolean(selectedId || compare);
 
   return (
     <div className="flex h-[calc(100dvh-5.5rem)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-line bg-surface max-lg:h-[calc(100dvh-8.5rem)]">
@@ -286,17 +343,40 @@ export function Inspector({
             </button>
           ))}
         </div>
-        <label className="relative min-w-40 flex-1">
-          <span className="sr-only">Filter by path</span>
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by path"
-            className={cn(inputClass, "h-7.5 pl-8 font-mono text-[12.5px]")}
-          />
-        </label>
+        <div className="flex min-w-48 flex-1 items-center">
+          <label className="relative flex-1">
+            <span className="sr-only">{filters.body ? "Search paths and bodies" : "Filter by path"}</span>
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={filters.body ? "Search paths and bodies" : "Filter by path"}
+              className={cn(inputClass, "h-7.5 rounded-r-none pl-8 font-mono text-[12.5px]")}
+            />
+          </label>
+          <button
+            type="button"
+            aria-pressed={filters.body === "1"}
+            onClick={() => setFilters((f) => ({ ...f, body: f.body ? "" : "1" }))}
+            title="Also search request and response bodies (uncompressed ones; JSON, forms, text)"
+            className={cn(
+              "h-7.5 rounded-r-[5px] border border-l-0 border-line-strong px-2 text-[12px] transition-colors",
+              filters.body ? "bg-surface-3 text-ink" : "text-muted hover:text-ink",
+            )}
+          >
+            Bodies
+          </button>
+        </div>
         <div className="flex items-center gap-1">
+          <a
+            href={`/api/requests/har?${query(filters)}`}
+            download
+            className={buttonClass("ghost", "sm")}
+            title="Download the newest 200 matching requests as a HAR file (HTTP Archive) for browser dev tools, Postman or k6"
+          >
+            <Download size={13} />
+            HAR
+          </a>
           <button
             type="button"
             onClick={() => (paused ? resume() : setPaused(true))}
@@ -332,9 +412,20 @@ export function Inspector({
           data-scroll-root
           className={cn(
             "min-h-0 overflow-y-auto scroll-thin outline-none lg:w-[44%] lg:min-w-[380px] lg:border-r lg:border-line",
-            selectedId ? "hidden w-full lg:block" : "w-full",
+            showDetail && !picking ? "hidden w-full lg:block" : "w-full",
           )}
         >
+          {picking ? (
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-line bg-sodium-wash px-3 py-2 text-[12.5px] text-ink">
+              <span className="min-w-0 truncate">
+                Pick a request to compare with{" "}
+                <span className="font-mono">{pickingSummary ? `${pickingSummary.method} ${pickingSummary.path}` : "the selected one"}</span>
+              </span>
+              <button type="button" onClick={() => setPicking(null)} className={buttonClass("ghost", "sm")}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
           {listError ? (
             <p className="m-3 rounded-[5px] border border-danger/30 bg-danger-wash px-3 py-2 text-[13px] text-danger">
               Couldn&apos;t load requests: {listError}
@@ -359,10 +450,12 @@ export function Inspector({
                 <li key={r.id} data-id={r.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedId(r.id)}
+                    onClick={() => select(r.id)}
                     className={cn(
                       "grid w-full grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-2 border-b border-line px-3 py-2 text-left",
-                      active ? "bg-surface-3" : "hover:bg-surface-2",
+                      active || (compare && (r.id === compare.a || r.id === compare.b)) || r.id === picking
+                        ? "bg-surface-3"
+                        : "hover:bg-surface-2",
                       fresh.has(r.id) && !active && "flash-new",
                     )}
                   >
@@ -404,15 +497,27 @@ export function Inspector({
         </div>
 
         {/* Detail */}
-        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", selectedId ? "flex" : "hidden lg:flex")}>
-          {detail ? (
+        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", showDetail && !picking ? "flex" : "hidden lg:flex")}>
+          {compare ? (
+            <CompareView
+              leftId={compare.a}
+              rightId={compare.b}
+              onSwap={() => setCompare({ a: compare.b, b: compare.a })}
+              onClose={() => {
+                setCompare(null);
+                setSelectedId(compare.a);
+              }}
+            />
+          ) : detail ? (
             <RequestDetail
               key={detail.id}
               detail={detail}
               loading={detailLoading}
               onReplay={replay}
+              onReplayed={replayed}
               replaying={replaying}
               replayError={replayError}
+              onCompare={() => setPicking(detail.id)}
               onClose={() => setSelectedId("")}
             />
           ) : detailError ? (

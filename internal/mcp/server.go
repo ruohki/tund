@@ -1077,6 +1077,7 @@ func (s *Server) getRequest(ctx context.Context, _ *mcp.CallToolRequest, in GetR
 
 type ReplayRequestIn struct {
 	ID           string            `json:"id" jsonschema:"request id from list_requests"`
+	Hostname     string            `json:"hostname,omitempty" jsonschema:"send it through another of your online tunnels instead (its hostname)"`
 	Method       string            `json:"method,omitempty" jsonschema:"override the method"`
 	Path         string            `json:"path,omitempty" jsonschema:"override the path, including the query string"`
 	Headers      map[string]string `json:"headers,omitempty" jsonschema:"headers to set or replace"`
@@ -1100,12 +1101,23 @@ func (s *Server) replayRequest(ctx context.Context, _ *mcp.CallToolRequest, in R
 		return nil, ReplayOut{}, err
 	}
 	var opts *api.ReplayOptions
-	if in.Method != "" || in.Path != "" || len(in.Headers) > 0 || in.Body != nil {
-		opts = &api.ReplayOptions{Method: strings.ToUpper(in.Method), Path: in.Path, Body: in.Body}
+	if in.Hostname != "" || in.Method != "" || in.Path != "" || len(in.Headers) > 0 || in.Body != nil {
+		opts = &api.ReplayOptions{Hostname: strings.TrimSpace(in.Hostname), Method: strings.ToUpper(in.Method), Path: in.Path, Body: in.Body}
 		if len(in.Headers) > 0 {
-			opts.Headers = map[string][]string{}
+			// The API replaces all headers; keep the original ones and set these.
+			orig, err := c.Request(ctx, strings.TrimSpace(in.ID))
+			if err != nil {
+				if api.StatusOf(err) == http.StatusNotFound {
+					return nil, ReplayOut{}, fmt.Errorf("no captured request with id %q", in.ID)
+				}
+				return nil, ReplayOut{}, s.apiError(err)
+			}
+			opts.Headers = http.Header{}
+			for k, vs := range orig.Request.Headers {
+				opts.Headers[k] = vs
+			}
 			for k, v := range in.Headers {
-				opts.Headers[k] = []string{v}
+				http.Header(opts.Headers).Set(k, v)
 			}
 		}
 	}

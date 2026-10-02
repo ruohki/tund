@@ -61,7 +61,7 @@ On `tund_config` the server re-reads access policies of live tunnels; on `authto
 
 All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON out, errors as `{"error": "..."}`.
 
-* `POST /internal/replay` `{"request_id","user_id","override"?:{"method","path","headers":{"K":["v"]},"body_base64"}}` → `200 {"request_id":"<new>"}`; `404` unknown request; `409` no online tunnel for that hostname.
+* `POST /internal/replay` `{"request_id","user_id","override"?:{"hostname","method","path","headers":{"K":["v"]},"body" | "body_base64"}}` → `200 {"request_id":"<new>"}`; `404` unknown request; `409` no online HTTP tunnel the user may replay through for that hostname. `hostname` sends the request through another online tunnel instead (one of the user's, or on a team domain they belong to); `headers` replaces all headers.
 * `POST /internal/tunnels/stop` `{"tunnel_id","user_id"}` → `200 {}` (tells the client and unbinds).
 * `GET /internal/health` → `200 {"ok":true}`.
 
@@ -234,6 +234,13 @@ In order:
 * Overview / get-started: show the account's default static hostname URL when it exists.
 * After any change: `NOTIFY tund_config {"kind":"domain","id"}` as before.
 
+## Inspector (dashboard)
+
+* **Body search**: the "Bodies" toggle next to the path filter (`/api/requests?q=…&body=1`) also matches request and response bodies: case-insensitive for ASCII (`encode(body, 'escape') ilike`), exact UTF-8 bytes otherwise. Compressed bodies are not searched. Live events can't be matched without bodies, so the list is reloaded (at most once a second) when one arrives.
+* **HAR export**: `GET /api/requests/har?<filters>` (same filters as the list) or `?id=<uuid>` (repeatable) → HAR 1.2 download of the newest 200 matching requests, oldest first. Bodies are decoded (`Content-Encoding`) and included as text, or base64 (`content.encoding: "base64"`, request `postData._encoding`) when not UTF-8; beyond 32 MB of bodies they are left out with a `comment`. Timings: `wait` = time to first byte, `receive` = the rest. Custom fields `_id`, `_remoteAddress`, `_replayOf`.
+* **Compare**: "Compare" on a request, then pick a second one; the detail pane shows both side by side (request, host, status, timing, sizes) and line diffs (Myers) of the request (request line, headers, body) and response, with long unchanged runs folded. Shareable as `/inspect?id=<a>&compare=<b>`.
+* **Edit & replay**: method, path (a pasted full URL also picks the tunnel), headers, text body, and the tunnel to send it through (the user's online HTTP tunnels, including team-domain ones), via `override` on `/internal/replay`. Binary or truncated bodies are sent as captured.
+
 ## Public API (v1) and MCP
 
 ### HTTP API on the edge
@@ -247,7 +254,7 @@ Served by tund-server on the dashboard host under `/_tund/api/v1/` (so it also w
 | `POST /tunnels/{id}/stop` | `{}` |
 | `GET /requests?hostname=&tunnel_id=&method=&status=2xx\|3xx\|4xx\|5xx&path=<substring>&limit=<1..200, default 50>&before=<RFC3339Nano>` | `{"requests":[Summary],"next_before":"<started_at of the last row or empty>"}` newest first |
 | `GET /requests/{id}` | `Summary + {"proto","request":{"headers":{"K":["v"]},"body":Body},"response":{"headers","body":Body}}` |
-| `POST /requests/{id}/replay` | body optional `{"method","path","headers":{"K":["v"]},"body":"<text>"}` or `"body_base64"`; → `{"request_id","status"}` (the new row is written within ~1 s) |
+| `POST /requests/{id}/replay` | body optional `{"hostname","method","path","headers":{"K":["v"]},"body":"<text>"}` or `"body_base64"`; → `{"request_id","status"}` (the new row is written within ~1 s). `hostname`: replay through another of your online tunnels; `headers` replaces all headers (the MCP tool merges its `headers` into the original ones) |
 
 `Summary = {"id","tunnel_id","hostname","method","path","status","duration_ms","ttfb_ms","req_body_size","resp_body_size","remote_addr","error","replay_of","started_at"}` (`status` 0 = no response, see `error`).
 

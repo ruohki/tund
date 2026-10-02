@@ -2,13 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown, ExternalLink, Loader2, RotateCcw, X } from "lucide-react";
-import type { RequestDetail as Detail } from "@/lib/requests";
+import { ChevronDown, Columns2, Download, ExternalLink, Loader2, PencilLine, RotateCcw, X } from "lucide-react";
+import type { RequestDetail as Detail, RequestSummary } from "@/lib/requests";
 import { formatBytes, formatDateTime, formatDuration } from "@/lib/format";
 import { buttonClass, cn, StatusCode } from "../ui";
 import { CopyButton } from "../client-ui";
 import { BodyView, KeyValueTable } from "./body-view";
 import { toCurl } from "./curl";
+import { ReplayEditor } from "./replay-editor";
 import { useDisplayTimeZone } from "@/lib/use-hydrated";
 
 function Section({
@@ -53,18 +54,25 @@ export function RequestDetail({
   detail,
   loading,
   onReplay,
+  onReplayed,
   replaying,
   replayError,
+  onCompare,
   onClose,
 }: {
   detail: Detail;
   loading: boolean;
   onReplay: () => void;
+  /** A replay sent from the editor went through. */
+  onReplayed: (res: { summary: RequestSummary | null; requestId: string }) => void;
   replaying: boolean;
   replayError: string | null;
+  /** Start picking a second request to compare this one with. */
+  onCompare?: () => void;
   onClose?: () => void;
 }) {
   const tz = useDisplayTimeZone();
+  const [editing, setEditing] = useState(false);
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col transition-opacity", loading && "opacity-60")}>
       <div className="border-b border-line px-4 py-3">
@@ -105,7 +113,26 @@ export function RequestDetail({
             {replaying ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
             Replay
           </button>
+          <button
+            type="button"
+            onClick={() => setEditing((e) => !e)}
+            aria-expanded={editing}
+            className={buttonClass(editing ? "secondary" : "ghost", "sm", editing ? "bg-surface-3" : undefined)}
+          >
+            <PencilLine size={13} />
+            Edit &amp; replay
+          </button>
           <CopyButton value={toCurl(detail)} label="Copy as cURL" variant="secondary" />
+          {onCompare ? (
+            <button type="button" onClick={onCompare} className={buttonClass("ghost", "sm")} title="Pick another request to compare with this one">
+              <Columns2 size={13} />
+              Compare
+            </button>
+          ) : null}
+          <a href={`/api/requests/har?id=${detail.id}`} download className={buttonClass("ghost", "sm")} title="Download as HAR (HTTP Archive)">
+            <Download size={13} />
+            HAR
+          </a>
           {detail.method === "GET" ? (
             <a href={detail.url} target="_blank" rel="noreferrer" className={buttonClass("ghost", "sm")}>
               <ExternalLink size={13} />
@@ -146,6 +173,16 @@ export function RequestDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto scroll-thin">
+        {editing ? (
+          <ReplayEditor
+            detail={detail}
+            onCancel={() => setEditing(false)}
+            onReplayed={(res) => {
+              setEditing(false);
+              onReplayed(res);
+            }}
+          />
+        ) : null}
         <h3 className="border-b border-line bg-surface-2 px-4 py-1.5 text-[12px] font-semibold text-ink-2">Request</h3>
         {detail.query.length ? (
           <Section title="Query parameters" count={detail.query.length}>

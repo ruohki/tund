@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"tund/internal/protocol"
 )
 
 // internalAPI serves the dashboard-only endpoints on TUND_INTERNAL_ADDR.
@@ -51,6 +53,9 @@ type replayRequest struct {
 
 // replayOverride changes parts of a captured request before replaying it.
 type replayOverride struct {
+	// Hostname sends the request through another online tunnel the user may
+	// replay through (one of theirs, or of a team domain they belong to).
+	Hostname   string      `json:"hostname"`
 	Method     string      `json:"method"`
 	Path       string      `json:"path"`
 	Headers    http.Header `json:"headers"`
@@ -103,10 +108,14 @@ func (s *Server) replay(ctx context.Context, userID, requestID string, o *replay
 	if err != nil {
 		return "", 0, err
 	}
-	t := s.reg.Lookup(orig.Hostname)
+	target := orig.Hostname
+	if o != nil && o.Hostname != "" {
+		target = normalizeHost(o.Hostname)
+	}
+	t := s.reg.Lookup(target)
 	if t == nil && s.cluster != nil {
 		// The tunnel lives on another node: replay there.
-		if n, _, ok := s.cluster.ownerOf(ctx, orig.Hostname); ok {
+		if n, proto, ok := s.cluster.ownerOf(ctx, target); ok && proto == protocol.ProtoHTTP {
 			reply, err := s.cluster.command(ctx, n, relayCmd{Cmd: "replay", UserID: userID, RequestID: requestID, Override: o})
 			if err != nil {
 				return "", 0, err
@@ -117,8 +126,8 @@ func (s *Server) replay(ctx context.Context, userID, requestID string, o *replay
 			return reply.RequestID, reply.Status, nil
 		}
 	}
-	if t == nil || !s.mayReplayThrough(ctx, userID, t) {
-		return "", 0, &apiError{http.StatusConflict, "no tunnel is online for " + orig.Hostname}
+	if t == nil || t.Proto != protocol.ProtoHTTP || !s.mayReplayThrough(ctx, userID, t) {
+		return "", 0, &apiError{http.StatusConflict, "no HTTP tunnel of yours is online for " + target}
 	}
 
 	method, path, headers, body := orig.Method, orig.Path, orig.Headers, orig.Body
@@ -147,7 +156,7 @@ func (s *Server) replay(ctx context.Context, userID, requestID string, o *replay
 
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, s.cfg.PublicURL(orig.Hostname)+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, s.cfg.PublicURL(target)+path, bytes.NewReader(body))
 	if err != nil {
 		return "", 0, &apiError{http.StatusBadRequest, "invalid request: " + err.Error()}
 	}
@@ -159,7 +168,7 @@ func (s *Server) replay(ctx context.Context, userID, requestID string, o *replay
 		req.Header.Del(h)
 	}
 	req.Header.Del("X-Forwarded-For")
-	req.Host = orig.Hostname
+	req.Host = target
 	req.RemoteAddr = "replay:0"
 	req.RequestURI = path
 	if len(body) == 0 {

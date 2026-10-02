@@ -11,12 +11,15 @@ export function InspectView({
   initialView,
   initialHost,
   initialId,
+  initialCompare,
 }: {
   hostnames: string[];
   addresses: string[];
   initialView: "requests" | "connections";
   initialHost: string;
   initialId: string;
+  /** With initialId: open the comparison of the two requests. */
+  initialCompare: string;
 }) {
   const [state, setState] = useState({ view: initialView, host: initialHost });
   return state.view === "connections" ? (
@@ -34,6 +37,7 @@ export function InspectView({
       addresses={addresses}
       initialHost={state.host}
       initialId={state.host === initialHost ? initialId : ""}
+      initialCompare={state.host === initialHost ? initialCompare : ""}
       onSwitch={(host) => setState({ view: "connections", host })}
     />
   );

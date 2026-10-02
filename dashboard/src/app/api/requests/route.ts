@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
       method: p.get("method") ?? undefined,
       status: p.get("status") ?? undefined,
       q: p.get("q") ?? undefined,
+      body: p.get("body") === "1",
       tunnel: p.get("tunnel") ?? undefined,
     },
     { before: p.get("before") ?? undefined, beforeId: p.get("beforeId") ?? undefined },

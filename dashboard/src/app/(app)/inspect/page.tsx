@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Inspect" };
 
 export default async function InspectPage({ searchParams }: PageProps<"/inspect">) {
   const user = await requireUser();
-  const { host, id, view } = await searchParams;
+  const { host, id, view, compare } = await searchParams;
   const [hostnames, addresses] = await Promise.all([requestHostnames(user.id), connectionAddresses(user.id)]);
   return (
     <div className="-mx-2 -my-2 sm:-mx-4 sm:-my-3">
@@ -22,6 +22,7 @@ export default async function InspectPage({ searchParams }: PageProps<"/inspect"
         initialView={view === "connections" ? "connections" : "requests"}
         initialHost={typeof host === "string" ? host.toLowerCase() : ""}
         initialId={isUuid(id) ? id : ""}
+        initialCompare={isUuid(id) && isUuid(compare) ? compare : ""}
       />
     </div>
   );

@@ -22,7 +22,7 @@ tund works in two ways from the same code:
 
 * **`tund` client**: a single static binary for Linux, macOS and Windows (amd64/arm64). It opens one outbound TLS WebSocket to the server and multiplexes streams over it (yamux). It needs no TUN/TAP device, no root and no inbound ports.
 * **`tund-server`**: the edge. It terminates TLS with automatic Let's Encrypt certificates, routes `*.your-domain` and verified custom domains to connected clients, records requests and responses, and enforces access policies. It also serves the dashboard, installers and client downloads.
-* **dashboard** (Next.js): accounts, auth tokens, reserved subdomains, custom domains with DNS verification, OIDC providers, access policies, a live request inspector with replay, and traffic metrics.
+* **dashboard** (Next.js): accounts, auth tokens, reserved subdomains, custom domains with DNS verification, OIDC providers, access policies, a live request inspector (search in bodies, compare two requests, edit and replay through any of your tunnels, HAR export), and traffic metrics.
 
 ```
 browser ──https──▶ tund-server :443 ──stream over wss──▶ tund client ──▶ localhost:3000

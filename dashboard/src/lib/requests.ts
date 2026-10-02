@@ -28,8 +28,26 @@ export type RequestFilters = {
   method?: string;
   status?: string; // 2xx | 3xx | 4xx | 5xx
   q?: string;
+  /** Match q in the request and response bodies too, not only the path. */
+  body?: boolean;
   tunnel?: string;
 };
+
+const likePattern = (q: string) => "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+
+/**
+ * q in a captured body. Bodies are bytea; ASCII searches are case-insensitive
+ * on the escaped form, anything else looks for the exact UTF-8 bytes.
+ * Compressed bodies (gzip, br, …) can't be searched in the database.
+ */
+function bodyMatch(column: "req_body" | "resp_body", q: string) {
+  const sql = db();
+  if (/^[\x20-\x7e]+$/.test(q)) {
+    // escape encoding doubles backslashes; search for the encoded form.
+    return sql`encode(${sql.unsafe(column)}, 'escape') ilike ${likePattern(q.replace(/\\/g, "\\\\"))}`;
+  }
+  return sql`position(${Buffer.from(q, "utf8")}::bytea in ${sql.unsafe(column)}) > 0`;
+}
 
 type Row = Record<string, unknown>;
 
@@ -74,7 +92,7 @@ export function visibleTo(userId: string, table = "requests") {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (s: unknown): s is string => typeof s === "string" && UUID_RE.test(s);
 
-function filterSql(userId: string, f: RequestFilters, opts: { ownOnly?: boolean } = {}) {
+export function filterSql(userId: string, f: RequestFilters, opts: { ownOnly?: boolean } = {}) {
   const sql = db();
   const parts = [opts.ownOnly ? sql`user_id = ${userId}` : visibleTo(userId)];
   if (f.host) parts.push(sql`hostname = ${f.host.toLowerCase()}`);
@@ -94,7 +112,11 @@ function filterSql(userId: string, f: RequestFilters, opts: { ownOnly?: boolean 
       parts.push(sql`(status >= 500 or status = 0)`);
       break;
   }
-  if (f.q) parts.push(sql`path ilike ${"%" + f.q.replace(/[\\%_]/g, (c) => "\\" + c) + "%"}`);
+  if (f.q && f.body) {
+    parts.push(sql`(path ilike ${likePattern(f.q)} or ${bodyMatch("req_body", f.q)} or ${bodyMatch("resp_body", f.q)})`);
+  } else if (f.q) {
+    parts.push(sql`path ilike ${likePattern(f.q)}`);
+  }
   return parts.reduce((acc, p) => sql`${acc} and ${p}`);
 }
 

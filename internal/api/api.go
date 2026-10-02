@@ -186,6 +186,7 @@ type RequestList struct {
 
 // ReplayOptions override parts of the original request. Nil replays as-is.
 type ReplayOptions struct {
+	Hostname   string              `json:"hostname,omitempty"` // another online tunnel of yours
 	Method     string              `json:"method,omitempty"`
 	Path       string              `json:"path,omitempty"`
 	Headers    map[string][]string `json:"headers,omitempty"`
