@@ -74,6 +74,8 @@ export type BillingSettings = {
   secret_key_enc: string;
   webhook_secret_enc: string;
   webhook_id: string;
+  /** The customer portal configuration "Set up Stripe" created. */
+  portal_configuration_id: string;
   currency: string;
   automatic_tax: boolean;
   prices: Record<PriceKey, number>;
@@ -84,6 +86,7 @@ export const DEFAULT_BILLING: BillingSettings = {
   secret_key_enc: "",
   webhook_secret_enc: "",
   webhook_id: "",
+  portal_configuration_id: "",
   currency: "usd",
   automatic_tax: false,
   prices: DEFAULT_PRICES,
@@ -690,6 +693,7 @@ async function load(): Promise<Cache> {
         secret_key_enc: typeof v.secret_key_enc === "string" ? v.secret_key_enc : "",
         webhook_secret_enc: typeof v.webhook_secret_enc === "string" ? v.webhook_secret_enc : "",
         webhook_id: typeof v.webhook_id === "string" ? v.webhook_id : "",
+        portal_configuration_id: typeof v.portal_configuration_id === "string" ? v.portal_configuration_id : "",
         currency: typeof v.currency === "string" && /^[a-z]{3}$/.test(v.currency) ? v.currency : "usd",
         automatic_tax: v.automatic_tax === true,
         prices,

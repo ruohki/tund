@@ -8,6 +8,7 @@ import { db, notify } from "@/lib/db";
 import {
   BillingError,
   checkoutUrl,
+  ensurePortalConfiguration,
   ensureWebhook,
   portalUrl,
   proSubscription,
@@ -157,13 +158,16 @@ export async function setupStripeAction(): Promise<SetupState> {
   try {
     const log = await syncCatalog();
     const hook = await ensureWebhook();
+    const portal = await ensurePortalConfiguration();
+    const next = { ...b, webhook_id: hook.id, portal_configuration_id: portal.id };
     if (hook.secret) {
-      await writeSettings({ billing: { ...b, webhook_id: hook.id, webhook_secret_enc: encryptSecret(hook.secret) } }, admin.id);
+      next.webhook_secret_enc = encryptSecret(hook.secret);
       log.push("Created the webhook endpoint and saved its signing secret.");
     } else {
-      if (hook.id !== b.webhook_id) await writeSettings({ billing: { ...b, webhook_id: hook.id } }, admin.id);
       log.push("The webhook endpoint points at this dashboard.");
     }
+    log.push(portal.created ? "Created the customer portal settings." : "Updated the customer portal settings.");
+    await writeSettings({ billing: next }, admin.id);
     invalidateSettings();
     await audit({ id: admin.id, email: admin.email }, "settings.billing_setup", "");
     refresh();

@@ -141,6 +141,49 @@ export async function ensureWebhook(): Promise<{ id: string; secret: string | nu
   return { id: ep.id, secret: ep.secret ?? null };
 }
 
+/**
+ * The customer portal configuration (payment methods, invoices, cancelling at
+ * the end of the period): updated when it exists, created otherwise.
+ */
+export async function ensurePortalConfiguration(): Promise<{ id: string; created: boolean }> {
+  const s = await getSettings();
+  const client = stripeClient(s.billing);
+  const params = {
+    business_profile: { headline: `${s.instance_name} subscriptions`, terms_of_service_url: `${config().dashboardUrl}/terms` },
+    default_return_url: `${config().dashboardUrl}/billing`,
+    features: {
+      customer_update: { enabled: true, allowed_updates: ["email", "address", "name", "tax_id"] as Stripe.BillingPortal.ConfigurationCreateParams.Features.CustomerUpdate.AllowedUpdate[] },
+      invoice_history: { enabled: true },
+      payment_method_update: { enabled: true },
+      subscription_cancel: {
+        enabled: true,
+        mode: "at_period_end" as const,
+        proration_behavior: "none" as const,
+        cancellation_reason: {
+          enabled: true,
+          options: ["too_expensive", "missing_features", "switched_service", "unused", "other"] as Stripe.BillingPortal.ConfigurationCreateParams.Features.SubscriptionCancel.CancellationReason.Option[],
+        },
+      },
+      // Seats and plan changes happen in the dashboard.
+      subscription_update: { enabled: false },
+    },
+    metadata: { tund_portal: "1" },
+  };
+  if (s.billing.portal_configuration_id) {
+    try {
+      const cur = await client.billingPortal.configurations.retrieve(s.billing.portal_configuration_id);
+      if (cur.active) {
+        await client.billingPortal.configurations.update(cur.id, params);
+        return { id: cur.id, created: false };
+      }
+    } catch {
+      /* gone: create a new one */
+    }
+  }
+  const cfg = await client.billingPortal.configurations.create(params);
+  return { id: cfg.id, created: true };
+}
+
 /** The Stripe customer of a user, created on first use. */
 export async function customerFor(user: Pick<User, "id" | "email" | "name">): Promise<string> {
   const [row] = await db()`select stripe_customer_id from users where id = ${user.id}`;
@@ -204,10 +247,12 @@ export async function checkoutUrl(opts: {
 
 /** Stripe's customer portal: payment methods, invoices, cancelling. */
 export async function portalUrl(user: User, returnPath: string): Promise<string> {
-  const client = await stripe();
+  const b = (await getSettings()).billing;
+  const client = stripeClient(b);
   const s = await client.billingPortal.sessions.create({
     customer: await customerFor(user),
     return_url: `${config().dashboardUrl}${returnPath}`,
+    ...(b.portal_configuration_id ? { configuration: b.portal_configuration_id } : {}),
   });
   return s.url;
 }
