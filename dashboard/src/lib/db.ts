@@ -10,7 +10,14 @@ function create(): Sql {
   if (!url) {
     throw new Error("TUND_DATABASE_URL is not set. Point it at the Postgres database shared with tund-server.");
   }
+  // postgres.js checks target_session_attrs=read-write with
+  // default_transaction_read_only, which is off on a Patroni replica too, and
+  // it spreads connections over all hosts of a multi-host URL: writes (and
+  // LISTEN, which replicas never deliver) would land on replicas. "primary"
+  // is checked with in_hot_standby, which is right.
+  const tsa = /[?&]target_session_attrs=([^&]+)/.exec(url)?.[1];
   return postgres(url, {
+    ...(tsa === "read-write" ? { target_session_attrs: "primary" as const } : {}),
     max: 10,
     idle_timeout: 30,
     connect_timeout: 10,
