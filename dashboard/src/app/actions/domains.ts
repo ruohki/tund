@@ -109,7 +109,7 @@ export async function addCustomDomainAction(_: FormState, fd: FormData): Promise
   const owner = await ownerFromForm(user, fd);
   if (typeof owner === "string") return { error: owner };
   // docs/SPEC.md "Abuse protection": untrusted_custom_domains decides for non-trusted accounts.
-  const refusal = await customDomainRefusal(user, res.hostname);
+  const refusal = await customDomainRefusal(user, res.hostname, owner.teamId);
   if (refusal) return { error: refusal };
   if (await blockedHostReason(res.hostname)) return { error: `${res.hostname} has been blocked on this server.` };
   const review = !isTrusted(user) && (await getSettings()).untrusted_custom_domains === "review";

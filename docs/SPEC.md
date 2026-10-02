@@ -467,6 +467,23 @@ TLS on `TUND_RELAY_ADDR` with a per-node self-signed certificate whose SHA-256 i
 * Internal API (dashboard → control): replay and stop go to the owning node via relay; `GET /internal/status` adds `nodes: [{name, role, region, alive, tunnels, version, last_seen}]`.
 * The public API's `GET /tunnels` reads online tunnels from the database (all nodes).
 
+## Plans and billing (migration 0021)
+
+**Plans.** Free accounts get the instance limits (Admin → Settings → Limits). Pro accounts get the `pro_limit_*` settings (defaults: 10 online tunnels, 10 static addresses, 5 custom domains, 10 teams, no speed cap, 10× the Free transfer, unlimited lifetime), never less than Free (`0` = unlimited wins; Free's custom domain count only counts when Free has custom domains), plus custom domains and TCP/TLS tunnels. Per-account overrides (`users.bandwidth_kbps`, `custom_domains`, …) still win, and admins stay exempt as before. The edge (`plan.go`) and the dashboard (`lib/plans.ts`) both ask Postgres:
+
+* `user_is_pro(uid)`: `users.pro_granted` (admin: "Pro without paying"), an active `pro` subscription, being the payer and owner of a team with an active `team` subscription, an owner of a team granted `team`, or a member of a team whose plan is `team_pro`.
+* `team_plan(tid)`: `teams.plan_granted` (admin: billing exempt), else the best active team subscription (`team_pro` before `team`); null = no plan.
+* `subscription_active(status)`: `active`, `trialing`, `past_due` (Stripe still retries).
+* `user_is_paying(uid)`: an active subscription in the account's own name. **Paying accounts count as trusted** (like `users.trusted`): checkout requires a billing address, so they are identified; the browser warning, custom domain review and untrusted-account rules don't apply to them. Granted Pro and Team Pro members who don't pay stay untrusted unless an admin trusts them.
+
+**Teams.** With billing on, a team without a plan is just its owner (no members, no team custom domains). Team and Team Pro include `team_seats` members (5) plus `team_seat_pack` (5) per extra seat pack, and `team_custom_domains` (1) custom domains that every member can bind, also on Free (the edge skips the account's custom-domain check for a team domain of a team with a plan). `teams.seats_override` (admin) replaces the seat count. Seats are checked when adding members, creating invites and accepting them (under the team row lock). With billing off nothing about teams changes.
+
+**Stripe.** Admin → Billing stores the secret key and webhook secret encrypted (key from `TUND_INTERNAL_SECRET`), the currency, Stripe Tax and the prices (defaults: Pro $5/$50, Team $10/$100, Team seats $10/$100 per pack, Team Pro $25/$250, Team Pro seats $25/$250 per pack, monthly/yearly). "Set up Stripe" creates the products (metadata `tund_product`) and prices (lookup keys `tund_<plan>_<interval>`, `tund_<plan>_seats_<interval>`; a changed amount creates a new price that takes over the lookup key and archives the old one) and a webhook endpoint `https://<dashboard>/api/billing/webhook` for `checkout.session.completed` and `customer.subscription.*`, saving its signing secret. Billing is on when enabled and a key is set; then the sidebar shows Billing/Upgrade and team pages show the plan panel.
+
+* Users subscribe on `/billing` (Stripe Checkout, `mode: subscription`, billing address required, promotion codes allowed); team owners on the team page (Team or Team Pro, monthly or yearly, extra seat packs). Subscription metadata `tund_plan`, `tund_user`, `tund_team` link it back. The Stripe customer is created once per account (`users.stripe_customer_id`). "Manage subscription" opens the Stripe customer portal (payment methods, invoices, cancelling; configure it in Stripe). The paying owner changes seat packs on the team page (`proration_behavior: always_invoice`); fewer seats than members are refused.
+* Webhooks verify the signature and upsert `subscriptions` (status, plan, interval, seat packs from the seat item's quantity, period end, cancel at period end), then `NOTIFY tund_config {"kind":"plans"}`: every edge refreshes meters, browser warnings (trust) and re-checks custom-domain and TCP/TLS tunnels. Trust for new binds is read when a client connects.
+* Admin → Billing shows active subscriptions and an MRR estimate; Admin → Users → user has "Pro without paying"; Admin → Teams → team sets a plan without billing and a seat override.
+
 ## Bandwidth limits (migration 0008)
 
 Per **account** (the tunnel owner), across all of its tunnels:

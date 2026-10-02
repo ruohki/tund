@@ -135,7 +135,8 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (*Account, 
 		update authtokens t set last_used_at = now()
 		from users u
 		where t.token_hash = $1 and u.id = t.user_id
-		returning t.user_id::text, t.id::text, u.email, u.is_admin, u.disabled_at is not null, u.trusted, u.email_verified_at is not null`, sha256Hex(token)).
+		returning t.user_id::text, t.id::text, u.email, u.is_admin, u.disabled_at is not null,
+			u.trusted or user_is_paying(u.id), u.email_verified_at is not null`, sha256Hex(token)).
 		Scan(&a.UserID, &a.TokenID, &a.Email, &a.IsAdmin, &a.Disabled, &a.Trusted, &a.EmailVerified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
@@ -609,12 +610,14 @@ type UserLimitRow struct {
 	CustomDomains   *bool // nil: the instance setting
 	Passthrough     *bool // nil: the instance setting
 	TunnelLifetime  *int  // minutes; nil: the instance setting
+	Pro             bool  // user_is_pro: the pro_* limits apply (plan.go)
 }
 
 func (s *Store) UserLimits(ctx context.Context, userID string) (*UserLimitRow, error) {
 	var l UserLimitRow
-	err := s.pool.QueryRow(ctx, `select is_admin, bandwidth_kbps, transfer_quota_gb, custom_domains, passthrough, tunnel_lifetime_minutes from users where id = $1`, userID).
-		Scan(&l.IsAdmin, &l.BandwidthKbps, &l.TransferQuotaGB, &l.CustomDomains, &l.Passthrough, &l.TunnelLifetime)
+	err := s.pool.QueryRow(ctx, `select is_admin, bandwidth_kbps, transfer_quota_gb, custom_domains, passthrough, tunnel_lifetime_minutes,
+		user_is_pro(id) from users where id = $1`, userID).
+		Scan(&l.IsAdmin, &l.BandwidthKbps, &l.TransferQuotaGB, &l.CustomDomains, &l.Passthrough, &l.TunnelLifetime, &l.Pro)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
 	}
@@ -865,7 +868,7 @@ func (s *Store) Settings(ctx context.Context) (map[string]json.RawMessage, error
 // UserTrusted reports whether a user's tunnels skip the browser warning.
 func (s *Store) UserTrusted(ctx context.Context, id string) (bool, error) {
 	var t bool
-	err := s.pool.QueryRow(ctx, `select is_admin or trusted from users where id = $1`, id).Scan(&t)
+	err := s.pool.QueryRow(ctx, `select is_admin or trusted or user_is_paying(id) from users where id = $1`, id).Scan(&t)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, errNotFound
 	}
@@ -1210,4 +1213,15 @@ func (s *Store) Listen(ctx context.Context, channel string, fn func(payload stri
 		}
 		backoff = min(backoff*2, 30*time.Second)
 	}
+}
+
+// TeamPlan is the team's plan (team_plan in migration 0021): "team",
+// "team_pro", or "" without one.
+func (s *Store) TeamPlan(ctx context.Context, teamID string) (string, error) {
+	var plan *string
+	err := s.pool.QueryRow(ctx, `select team_plan($1::uuid)`, teamID).Scan(&plan)
+	if err != nil || plan == nil {
+		return "", err
+	}
+	return *plan, nil
 }

@@ -275,8 +275,12 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		meter.mu.Unlock()
 		return nil, "", bindError(msg)
 	}
-	if max := s.rt().MaxTunnelsPerUser; max > 0 && !acct.IsAdmin && s.reg.CountForUser(acct.UserID) >= max {
-		return nil, "", bindError(fmt.Sprintf("tunnel limit reached (%d online tunnels per account)", max))
+	plan, _, err := s.accountPlan(ctx, acct.UserID)
+	if err != nil {
+		return nil, "", err
+	}
+	if max := plan.Tunnels; max > 0 && !acct.IsAdmin && s.reg.CountForUser(acct.UserID) >= max {
+		return nil, "", bindError(fmt.Sprintf("tunnel limit reached (%d online tunnels on your plan)", max))
 	}
 
 	t := &Tunnel{
@@ -486,16 +490,20 @@ func (s *Server) closeTCP(t *Tunnel) {
 
 // pinTCP reserves port for the account (a "static address").
 func (s *Server) pinTCP(ctx context.Context, acct Account, port int) error {
-	if max := s.rt().MaxPinnedPerUser; max > 0 && !acct.IsAdmin {
+	plan, _, err := s.accountPlan(ctx, acct.UserID)
+	if err != nil {
+		return err
+	}
+	if max := plan.Pinned; max > 0 && !acct.IsAdmin {
 		n, err := s.store.CountStatic(ctx, acct.UserID)
 		if err != nil {
 			return err
 		}
 		if n >= max {
-			return bindError(fmt.Sprintf("not pinned: static address limit reached (%d per account); remove one in the dashboard", max))
+			return bindError(fmt.Sprintf("not pinned: static address limit reached (%d on your plan); remove one in the dashboard", max))
 		}
 	}
-	err := s.store.ReserveTCP(ctx, acct.UserID, port)
+	err = s.store.ReserveTCP(ctx, acct.UserID, port)
 	if errors.Is(err, errTaken) {
 		return bindError(fmt.Sprintf("not pinned: port %d is reserved by another account", port))
 	}
@@ -701,13 +709,17 @@ func (s *Server) autoPin(ctx context.Context, acct Account) (*Domain, error) {
 // pinHostname makes host a static hostname of the account (the default if it
 // has none). Limit and ownership problems are returned as bindError.
 func (s *Server) pinHostname(ctx context.Context, acct Account, host string) (*Domain, error) {
-	if max := s.rt().MaxPinnedPerUser; max > 0 && !acct.IsAdmin {
+	plan, _, err := s.accountPlan(ctx, acct.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if max := plan.Pinned; max > 0 && !acct.IsAdmin {
 		n, err := s.store.CountStatic(ctx, acct.UserID)
 		if err != nil {
 			return nil, err
 		}
 		if n >= max {
-			return nil, bindError(fmt.Sprintf("not pinned: static hostname limit reached (%d per account); remove one in the dashboard", max))
+			return nil, bindError(fmt.Sprintf("not pinned: static hostname limit reached (%d on your plan); remove one in the dashboard", max))
 		}
 	}
 	d, err := s.store.PinStatic(ctx, acct.UserID, host)
@@ -727,17 +739,21 @@ func (s *Server) resolveExplicit(ctx context.Context, userID string, b *protocol
 			if !validHostname(host) {
 				return "", nil, bindError("invalid hostname " + host)
 			}
-			if ok, err := s.customDomainsAllowed(ctx, userID); err != nil {
+			d, err := s.store.ResolveDomain(ctx, host)
+			if err != nil && !errors.Is(err, errNotFound) {
+				return "", nil, err
+			}
+			if err != nil || !s.canUseDomain(ctx, d, userID) {
+				d = nil
+			}
+			// A team's custom domain works for its members when the team has a plan.
+			if ok, err := s.customDomainUsable(ctx, d, userID); err != nil {
 				return "", nil, err
 			} else if !ok {
 				return "", nil, bindError(errCustomDomainsOff)
 			}
-			d, err := s.store.ResolveDomain(ctx, host)
-			if errors.Is(err, errNotFound) || (err == nil && !s.canUseDomain(ctx, d, userID)) {
+			if d == nil {
 				return "", nil, bindError(host + " is not one of your or your teams' domains; add and verify it in the dashboard first")
-			}
-			if err != nil {
-				return "", nil, err
 			}
 			if !d.Verified {
 				return "", nil, bindError(d.Hostname + " is not verified yet; finish DNS verification in the dashboard")

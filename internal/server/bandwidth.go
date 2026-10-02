@@ -76,7 +76,7 @@ func (s *Server) meterFor(ctx context.Context, userID string) (*accountMeter, er
 
 // refreshMeter reloads the account's limits and this month's usage.
 func (s *Server) refreshMeter(ctx context.Context, m *accountMeter) error {
-	lim, err := s.store.UserLimits(ctx, m.userID)
+	plan, lim, err := s.accountPlan(ctx, m.userID)
 	if err != nil {
 		return err
 	}
@@ -85,8 +85,7 @@ func (s *Server) refreshMeter(ctx context.Context, m *accountMeter) error {
 	if err != nil {
 		return err
 	}
-	rt := s.rt()
-	kbps, quotaGB := rt.BandwidthKbps, rt.TransferGB
+	kbps, quotaGB := plan.BandwidthKbps, plan.TransferGB
 	if lim.IsAdmin {
 		kbps, quotaGB = 0, 0
 	}

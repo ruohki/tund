@@ -91,7 +91,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!tokens.length) return null;
   const ids = tokens.map(sha256);
   const rows = await db()`
-    select s.id as session_id, s.expires_at, u.id, u.email, u.name, u.is_admin, u.created_at, u.email_verified_at, u.trusted, u.custom_domains, u.passthrough
+    select s.id as session_id, s.expires_at, u.id, u.email, u.name, u.is_admin, u.created_at, u.email_verified_at,
+      (u.trusted or user_is_paying(u.id)) as trusted, u.custom_domains, u.passthrough
     from sessions s join users u on u.id = s.user_id
     where s.id in ${db()(ids)} and s.expires_at > now() and u.disabled_at is null`;
   const row = ids.map((id) => rows.find((r) => r.session_id === id)).find(Boolean);

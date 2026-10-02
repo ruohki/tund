@@ -9,6 +9,7 @@ import { countTunnels, listTunnels } from "@/lib/metrics";
 import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
 import { formatDateTime, formatDuration, formatLifetime, formatNumber, osLabel, sessionLength, timeAgo, timeLeft } from "@/lib/format";
 import { effectiveLimits } from "@/lib/usage";
+import { accountPlan } from "@/lib/plans";
 import { AuthBadge, Badge, EmptyState, PageHeader, Panel, ProtoBadge } from "@/components/ui";
 import { Command } from "@/components/client-ui";
 import { RouteLine } from "@/components/route-line";
@@ -82,7 +83,8 @@ export default async function TunnelsPage({ searchParams }: PageProps<"/tunnels"
   const poolSize = (hostname: string) => online.filter((t) => t.pooled && t.hostname === hostname).length;
   const cfg = config();
   const settings = await getSettings();
-  const maxTunnels = settings.limit_tunnels > 0 && !user.isAdmin ? settings.limit_tunnels : null;
+  const planTunnels = (await accountPlan(user.id)).tunnels;
+  const maxTunnels = planTunnels > 0 && !user.isAdmin ? planTunnels : null;
   // Only single-label names under the server's own domain can become static hostnames.
   // Mirrors the edge's rule (docs/SPEC.md "Browser warning page") so users know which tunnels show it.
   const ownerExempt = user.isAdmin || (settings.browser_warning && (await ownerTrusted(user.id)));

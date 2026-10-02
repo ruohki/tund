@@ -7,6 +7,7 @@ import { db, notify } from "./db";
 import { randomLabel } from "./names";
 import { checkSubdomain } from "./validate";
 import { blockedHostReason, labelRefusal } from "./abuse";
+import { accountPlan, planLimits, teamBilling } from "./plans";
 
 // Static hostnames: base-domain subdomains pinned to an account or a team
 // (domains rows with kind='subdomain'). See docs/SPEC.md "Static hostnames
@@ -34,9 +35,25 @@ function scope(sql: Tx | ReturnType<typeof db>, user: User, owner: DomainOwner) 
   return owner.teamId ? sql`team_id = ${owner.teamId}` : sql`user_id = ${user.id} and team_id is null`;
 }
 
-async function maxFor(kind: "subdomain" | "custom") {
-  const s = await getSettings();
-  return kind === "subdomain" ? s.limit_pinned : s.limit_domains;
+export const TEAM_DOMAINS_NEED_PLAN = "Custom domains for teams come with a Team plan. Subscribe on the team page.";
+
+/**
+ * The limit for `kind` (0 = unlimited) from the plan: the account's (Free or
+ * Pro), or for team domains the team's. With billing on, team custom domains
+ * need a team plan (a refusal string otherwise) and follow team_custom_domains.
+ */
+async function maxFor(user: User, kind: "subdomain" | "custom", owner: DomainOwner): Promise<number | string> {
+  if (owner.teamId) {
+    const b = await teamBilling(owner.teamId);
+    if (kind === "custom" && b.customDomains !== null) {
+      if (!b.plan) return TEAM_DOMAINS_NEED_PLAN;
+      return b.customDomains;
+    }
+    const p = planLimits(await getSettings(), b.plan !== null);
+    return kind === "subdomain" ? p.pinned : p.domains;
+  }
+  const p = await accountPlan(user.id);
+  return kind === "subdomain" ? p.pinned : p.domains;
 }
 
 /**
@@ -53,14 +70,19 @@ async function countFor(q: Tx | ReturnType<typeof db>, user: User, kind: "subdom
   return n;
 }
 
-/** Usage for `kind` (per account, or per team for team domains); limit null = unlimited (0 or admin). */
+/**
+ * Usage for `kind` (per account, or per team for team domains); limit null =
+ * unlimited (0 or admin); locked = why none can be added at all.
+ */
 export async function domainUsage(
   user: User,
   kind: "subdomain" | "custom",
   owner: DomainOwner = PERSONAL,
-): Promise<{ used: number; limit: number | null }> {
-  const max = await maxFor(kind);
-  return { used: await countFor(db(), user, kind, owner), limit: max > 0 && !user.isAdmin ? max : null };
+): Promise<{ used: number; limit: number | null; locked: string | null }> {
+  const max = await maxFor(user, kind, owner);
+  const used = await countFor(db(), user, kind, owner);
+  if (typeof max === "string") return { used, limit: 0, locked: max };
+  return { used, limit: max > 0 && !user.isAdmin ? max : null, locked: null };
 }
 
 /**
@@ -75,7 +97,8 @@ export async function lockAndCheckLimit(
 ): Promise<string | null> {
   if (owner.teamId) await tx`select 1 from teams where id = ${owner.teamId} for update`;
   else await tx`select 1 from users where id = ${user.id} for update`;
-  const max = await maxFor(kind);
+  const max = await maxFor(user, kind, owner);
+  if (typeof max === "string") return max;
   if (max <= 0 || user.isAdmin) return null;
   if ((await countFor(tx, user, kind, owner)) < max) return null;
   const who = owner.teamId ? "this team" : "your account";

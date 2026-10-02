@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { UsersRound } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
+import { accountPlan } from "@/lib/plans";
 import { listMyTeams } from "@/lib/teams";
 import { Badge, EmptyState, PageHeader, Panel } from "@/components/ui";
 import { CreateTeamForm } from "./create-team";
@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Teams" };
 export default async function TeamsPage() {
   const user = await requireUser();
   const teams = await listMyTeams(user.id);
-  const max = (await getSettings()).limit_teams;
+  const max = (await accountPlan(user.id)).teams;
   const owned = teams.filter((t) => t.role === "owner").length;
   const full = max > 0 && !user.isAdmin && owned >= max;
 

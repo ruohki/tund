@@ -16,21 +16,52 @@ func featureEnabled(global, isAdmin bool, override *bool) bool {
 }
 
 func (s *Server) customDomainsAllowed(ctx context.Context, userID string) (bool, error) {
-	l, err := s.store.UserLimits(ctx, userID)
+	plan, l, err := s.accountPlan(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-	return featureEnabled(s.rt().CustomDomains, l.IsAdmin, l.CustomDomains), nil
+	return featureEnabled(plan.CustomDomains, l.IsAdmin, l.CustomDomains), nil
+}
+
+// customDomainUsable: a custom domain of a team with a plan (Team, Team Pro,
+// or granted) works for every member; anything else needs custom domains on
+// the account.
+func (s *Server) customDomainUsable(ctx context.Context, d *Domain, userID string) (bool, error) {
+	if d != nil && d.TeamID != "" {
+		plan, err := s.store.TeamPlan(ctx, d.TeamID)
+		if err != nil {
+			return false, err
+		}
+		if plan != "" {
+			return true, nil
+		}
+	}
+	return s.customDomainsAllowed(ctx, userID)
 }
 
 // recheckCustomDomains ends the custom-domain tunnels of accounts that may no
-// longer use custom domains (userID "" = every account), after the setting or
-// an override changed.
+// longer use custom domains (userID "" = every account), after the setting, an
+// override or a plan changed.
 func (s *Server) recheckCustomDomains(ctx context.Context, userID string) {
 	allowed := map[string]bool{}
+	teamPlans := map[string]string{}
 	for _, t := range s.reg.Tunnels() {
 		if t.Hostname == "" || s.certs.underBase(t.Hostname) || (userID != "" && t.UserID != userID) {
 			continue
+		}
+		if t.TeamID != "" {
+			plan, seen := teamPlans[t.TeamID]
+			if !seen {
+				var err error
+				if plan, err = s.store.TeamPlan(ctx, t.TeamID); err != nil {
+					logf("team plan for %s: %v", t.Hostname, err)
+					continue
+				}
+				teamPlans[t.TeamID] = plan
+			}
+			if plan != "" {
+				continue
+			}
 		}
 		ok, seen := allowed[t.UserID]
 		if !seen {
@@ -47,4 +78,4 @@ func (s *Server) recheckCustomDomains(ctx context.Context, userID string) {
 	}
 }
 
-const errCustomDomainsOff = "custom domains are not enabled for your account on this server; ask the administrator"
+const errCustomDomainsOff = "custom domains are not part of your plan on this server; upgrade in the dashboard or ask the administrator"

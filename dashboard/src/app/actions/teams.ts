@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUser, sha256, type User } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
+import { accountPlan, seatRefusal } from "@/lib/plans";
 import { inviteEmail, smtpConfigured, trySendMail } from "@/lib/mail";
 import { db, notify } from "@/lib/db";
 import { isUuid } from "@/lib/requests";
@@ -38,7 +39,7 @@ export async function createTeamAction(_: FormState, fd: FormData): Promise<Form
   const slug = str(fd, "slug").toLowerCase();
   if (!name) return { error: "Give the team a name." };
   if (!TEAM_SLUG_RE.test(slug)) return { error: "Slug: use lowercase letters, digits and hyphens (up to 40 characters)." };
-  const max = (await getSettings()).limit_teams;
+  const max = (await accountPlan(user.id)).teams;
   let teamId: string;
   try {
     const res = await db().begin(async (tx) => {
@@ -154,6 +155,8 @@ export async function addMemberAction(_: AddMemberState, fd: FormData): Promise<
   const [target] = await db()`select id, disabled_at from users where email = ${email}`;
   if (!target) return { inviteEmail: email };
   if (target.disabled_at) return { error: `${email} is disabled on this server.` };
+  const full = await seatRefusal(teamId);
+  if (full) return { error: full };
   const res = await db()`
     insert into team_members (team_id, user_id, role) values (${teamId}, ${target.id}, ${role})
     on conflict (team_id, user_id) do nothing`;
@@ -175,6 +178,8 @@ export async function createInviteAction(_: InviteState, fd: FormData): Promise<
   const email = str(fd, "email").toLowerCase();
   if (email && checkEmail(email)) return { error: "Enter a valid email address, or leave it empty for a link anyone can use." };
   const role = str(fd, "role") === "admin" ? "admin" : "member";
+  const full = await seatRefusal(teamId);
+  if (full) return { error: full };
   const token = randomBytes(32).toString("base64url");
   await db()`
     insert into team_invites (team_id, email, role, token_hash, invited_by, expires_at)
@@ -214,6 +219,13 @@ export async function acceptInviteAction(token: string): Promise<AcceptResult> {
     if ((inv.expires_at as Date).getTime() < Date.now()) return { error: "This invite has expired. Ask for a new one." };
     if (inv.email && inv.email !== user.email.toLowerCase()) {
       return { error: `This invite is for ${inv.email}. Sign in with that account to accept it.` };
+    }
+    // The team row lock serializes joins, so two invites can't take the last seat.
+    await tx`select 1 from teams where id = ${inv.team_id} for update`;
+    const [already] = await tx`select 1 from team_members where team_id = ${inv.team_id} and user_id = ${user.id}`;
+    if (!already) {
+      const full = await seatRefusal(inv.team_id as string);
+      if (full) return { error: `${inv.slug}: ${full} Ask the team's owner.` };
     }
     const added = await tx`
       insert into team_members (team_id, user_id, role) values (${inv.team_id}, ${user.id}, ${inv.role})

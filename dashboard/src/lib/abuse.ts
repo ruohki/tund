@@ -4,6 +4,7 @@ import type { User } from "./auth";
 import { config } from "./config";
 import { db, notify } from "./db";
 import { getSettings } from "./settings";
+import { accountPlan, billingEnabled, teamPlan } from "./plans";
 import type { ReportCategory, ReportSource } from "./abuse-shared";
 
 // Abuse protection (docs/SPEC.md "Abuse protection (migration 0009)").
@@ -42,31 +43,46 @@ export async function labelRefusal(user: User, label: string): Promise<string | 
 }
 
 /**
- * Whether the account may use custom domains: its override, else the instance
- * setting (admins don't need it). Mirrors customDomainsEnabled in the edge.
+ * Whether the account may use custom domains: its override, else its plan
+ * (Pro always; Free per the instance setting; admins don't need it). Mirrors
+ * customDomainsAllowed in the edge.
  */
-export async function customDomainsEnabled(user: Pick<User, "isAdmin" | "customDomains">): Promise<boolean> {
-  return user.customDomains ?? (user.isAdmin || (await getSettings()).custom_domains);
+export async function customDomainsEnabled(user: Pick<User, "id" | "isAdmin" | "customDomains">): Promise<boolean> {
+  return user.customDomains ?? (user.isAdmin || (await accountPlan(user.id)).customDomains);
 }
 
 export const CUSTOM_DOMAINS_OFF = "Custom domains aren't enabled for your account on this server. Ask an administrator to turn them on.";
+export const CUSTOM_DOMAINS_PRO = "Custom domains are part of Pro. Upgrade under Billing to add your own domains.";
+
+/** The right "not for you" message: upgrade when billing is on, ask an admin otherwise. */
+export async function customDomainsOffMessage(): Promise<string> {
+  return (await billingEnabled()) ? CUSTOM_DOMAINS_PRO : CUSTOM_DOMAINS_OFF;
+}
 
 /**
- * Whether the account may open TCP and TLS tunnels: its override, else the
- * instance setting (admins don't need it). Mirrors passthroughAllowed in the edge.
+ * Whether the account may open TCP and TLS tunnels: its override, else its
+ * plan (Pro always; Free per the instance setting; admins don't need it).
+ * Mirrors passthroughAllowed in the edge.
  */
-export async function passthroughEnabled(user: Pick<User, "isAdmin" | "passthrough">): Promise<boolean> {
-  return user.passthrough ?? (user.isAdmin || (await getSettings()).passthrough);
+export async function passthroughEnabled(user: Pick<User, "id" | "isAdmin" | "passthrough">): Promise<boolean> {
+  return user.passthrough ?? (user.isAdmin || (await accountPlan(user.id)).passthrough);
 }
 
 export const PASSTHROUGH_OFF = "TCP and TLS tunnels aren't enabled for your account on this server. Ask an administrator to turn them on.";
+export const PASSTHROUGH_PRO = "TCP and TLS tunnels are part of Pro. Upgrade under Billing to open them.";
+
+export async function passthroughOffMessage(): Promise<string> {
+  return (await billingEnabled()) ? PASSTHROUGH_PRO : PASSTHROUGH_OFF;
+}
 
 /**
  * Why this account may not add this custom domain, or null. The edge refuses
  * to bind these even when approved, so they're refused up front.
  */
-export async function customDomainRefusal(user: User, hostname: string): Promise<string | null> {
-  if (!(await customDomainsEnabled(user))) return CUSTOM_DOMAINS_OFF;
+export async function customDomainRefusal(user: User, hostname: string, teamId: string | null = null): Promise<string | null> {
+  // A team with a plan has its own custom domain allowance; members don't need Pro.
+  const teamCovered = teamId !== null && (await teamPlan(teamId)) !== null;
+  if (!teamCovered && !(await customDomainsEnabled(user))) return customDomainsOffMessage();
   if (isTrusted(user)) return null;
   const s = await getSettings();
   if (s.untrusted_custom_domains === "deny") {

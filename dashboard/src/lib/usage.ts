@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { getSettings } from "./settings";
+import { accountPlan } from "./plans";
 
 // Monthly transfer and throughput limits (docs/SPEC.md "Bandwidth limits").
 // Quotas are decimal: 1 GB = 10^9 bytes, counting both directions.
@@ -66,19 +66,19 @@ export type Limits = {
   lifetimeOverride: number | null;
 };
 
-/** Per-user overrides win; otherwise instance defaults, which admins are exempt from. */
+/** Per-user overrides win; otherwise the account's plan (Free or Pro), which admins are exempt from. */
 export async function effectiveLimits(user: { id: string; isAdmin: boolean }): Promise<Limits> {
-  const [s, [u]] = await Promise.all([
-    getSettings(),
+  const [plan, [u]] = await Promise.all([
+    accountPlan(user.id),
     db()`select bandwidth_kbps, transfer_quota_gb, tunnel_lifetime_minutes from users where id = ${user.id}`,
   ]);
   const bo = (u?.bandwidth_kbps as number | null) ?? null;
   const to = (u?.transfer_quota_gb as number | null) ?? null;
   const lo = (u?.tunnel_lifetime_minutes as number | null) ?? null;
   return {
-    bandwidthKbps: bo ?? (user.isAdmin ? 0 : s.limit_bandwidth_kbps),
-    transferGb: to ?? (user.isAdmin ? 0 : s.limit_transfer_gb),
-    lifetimeMinutes: lo ?? (user.isAdmin ? 0 : s.limit_tunnel_lifetime),
+    bandwidthKbps: bo ?? (user.isAdmin ? 0 : plan.bandwidthKbps),
+    transferGb: to ?? (user.isAdmin ? 0 : plan.transferGb),
+    lifetimeMinutes: lo ?? (user.isAdmin ? 0 : plan.lifetimeMinutes),
     bandwidthOverride: bo,
     transferOverride: to,
     lifetimeOverride: lo,

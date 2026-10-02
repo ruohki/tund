@@ -215,6 +215,16 @@ When a visitor passes a tunnel's password or OIDC check, the edge tells your app
 
 The edge **always removes `X-Tund-*` headers sent by visitors** before adding its own, on every tunnel, so an app can rely on them for requests that arrive through tund. Allow lists also accept `group:<name>` (e.g. `--oidc-allow group:engineering`); ask your IdP for the `profile` and `groups` scopes.
 
+## Plans and billing
+
+Without billing (the default, e.g. self-hosted) every account gets the limits under *Admin → Settings*. To sell plans, add a Stripe key under *Admin → Billing*, click *Set up Stripe* (creates the products, prices and webhook) and turn billing on:
+
+* **Free** keeps the configured limits.
+* **Pro** ($5/month or $50/year by default): custom domains, TCP/TLS tunnels and higher limits, all adjustable under *Settings → Pro plan*.
+* **Team** ($10/$100): 5 members and a custom domain shared with all of them; the owner who pays gets Pro. **Team Pro** ($25/$250): every member gets Pro. Extra members come in packs of 5.
+
+Paying accounts count as trusted (no browser warning page or domain review). Admins can give anyone Pro, or a team a plan, without paying.
+
 ## Dashboard sign-in
 
 Besides email and password (and optionally Google or GitHub), accounts can add **passkeys** (fingerprint, face or device PIN, also synced ones like iCloud Keychain or 1Password) and turn on **two-factor authentication** with an authenticator app, both under *Settings*. With two-factor on, every password or Google/GitHub sign-in also asks for a code, a passkey or one of ten recovery codes. Admins can turn two-factor off for a user who lost their phone.

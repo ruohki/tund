@@ -16,6 +16,9 @@ import { isUuid } from "@/lib/requests";
 import { AuthBadge, Badge, PageHeader, Panel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/client-ui";
 import { adminDisableTwoFactorAction, deleteUserAction } from "@/app/actions/admin";
+import { setProGrantedAction } from "@/app/actions/billing";
+import { PLAN_LABEL, proSources } from "@/lib/plans";
+import { proSubscription } from "@/lib/billing";
 import { FlagSwitch, ResetPasswordButton, StopTunnelForm } from "../../admin-forms";
 import { FlagUserForm } from "../../abuse/abuse-forms";
 import { ApprovalBadge } from "../../domains/approval-badge";
@@ -50,7 +53,8 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
     monthUsage(id),
     getSettings(),
   ]);
-  const identities = await identitiesOf(id);
+  const [identities, sources, proSub] = await Promise.all([identitiesOf(id), proSources(id), proSubscription(id)]);
+  const pro = sources.granted || sources.subscription || sources.teams.length > 0;
   const limits = await effectiveLimits({ id, isAdmin: Boolean(u.is_admin) });
   const monthBytes = usage.bytesIn + usage.bytesOut;
   const self = u.id === admin.id;
@@ -77,6 +81,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
               </Badge>
             ))}
             {u.password_hash === null ? <Badge tone="outline">No password</Badge> : null}
+            {pro ? <Badge tone="ok">Pro</Badge> : null}
             {u.totp_secret ? <Badge tone="ok">Two-factor</Badge> : null}
             {counts.passkeys ? (
               <Badge tone="outline">
@@ -136,6 +141,29 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             help={u.email_verified_at ? `Since ${formatDateTime(u.email_verified_at)}.` : "Mark the address as confirmed without the email link."}
             disabled={Boolean(u.email_verified_at)}
           />
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-[13.5px] font-medium text-ink">Pro without paying</p>
+              <p className="text-[12.5px] text-muted">
+                {[
+                  proSub?.active
+                    ? `Pays for Pro (${proSub.interval === "year" ? "yearly" : "monthly"}${proSub.cancelAtPeriodEnd ? ", cancelled" : ""}).`
+                    : null,
+                  sources.teams.length ? `Pro through ${sources.teams.map((t) => `${t.slug} (${PLAN_LABEL[t.plan]})`).join(", ")}.` : null,
+                  sources.granted ? "Granted: Pro limits without a subscription." : "Gives this account the Pro limits without a subscription.",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              </p>
+            </div>
+            <form action={setProGrantedAction}>
+              <input type="hidden" name="id" value={u.id} />
+              <input type="hidden" name="on" value={sources.granted ? "0" : "1"} />
+              <ConfirmSubmit confirmText={sources.granted ? "Remove granted Pro?" : "Grant Pro?"}>
+                {sources.granted ? "Remove" : "Grant Pro"}
+              </ConfirmSubmit>
+            </form>
+          </div>
           {u.totp_secret ? (
             <div className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div>

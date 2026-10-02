@@ -29,6 +29,66 @@ export type OAuthProviderSettings = {
 
 export type OAuthSettings = Partial<Record<OAuthProviderId, OAuthProviderSettings>>;
 
+/** Prices in cents per billing interval (docs/SPEC.md "Plans and billing"). Seats: per pack of team_seat_pack. */
+export type PriceKey =
+  | "pro_month"
+  | "pro_year"
+  | "team_month"
+  | "team_year"
+  | "team_seats_month"
+  | "team_seats_year"
+  | "team_pro_month"
+  | "team_pro_year"
+  | "team_pro_seats_month"
+  | "team_pro_seats_year";
+
+export const PRICE_KEYS: PriceKey[] = [
+  "pro_month",
+  "pro_year",
+  "team_month",
+  "team_year",
+  "team_seats_month",
+  "team_seats_year",
+  "team_pro_month",
+  "team_pro_year",
+  "team_pro_seats_month",
+  "team_pro_seats_year",
+];
+
+export const DEFAULT_PRICES: Record<PriceKey, number> = {
+  pro_month: 500,
+  pro_year: 5000,
+  team_month: 1000,
+  team_year: 10000,
+  team_seats_month: 1000,
+  team_seats_year: 10000,
+  team_pro_month: 2500,
+  team_pro_year: 25000,
+  team_pro_seats_month: 2500,
+  team_pro_seats_year: 25000,
+};
+
+/** Stripe billing (Admin → Billing); keys are stored encrypted like the SMTP password. */
+export type BillingSettings = {
+  enabled: boolean;
+  secret_key_enc: string;
+  webhook_secret_enc: string;
+  webhook_id: string;
+  currency: string;
+  automatic_tax: boolean;
+  prices: Record<PriceKey, number>;
+};
+
+export const DEFAULT_BILLING: BillingSettings = {
+  enabled: false,
+  secret_key_enc: "",
+  webhook_secret_enc: "",
+  webhook_id: "",
+  currency: "usd",
+  automatic_tax: false,
+  prices: DEFAULT_PRICES,
+};
+
 export type Settings = {
   signup_mode: SignupMode;
   require_email_verification: boolean;
@@ -41,6 +101,17 @@ export type Settings = {
   limit_bandwidth_kbps: number;
   limit_transfer_gb: number;
   limit_tunnel_lifetime: number;
+  // Pro plan (docs/SPEC.md "Plans and billing")
+  pro_limit_tunnels: number;
+  pro_limit_pinned: number;
+  pro_limit_domains: number;
+  pro_limit_teams: number;
+  pro_limit_bandwidth_kbps: number;
+  pro_limit_transfer_gb: number;
+  pro_limit_tunnel_lifetime: number;
+  team_seats: number;
+  team_seat_pack: number;
+  team_custom_domains: number;
   auto_pin: boolean;
   browser_warning: boolean;
   abuse_contact: string;
@@ -67,16 +138,17 @@ export type Settings = {
   acceptable_use_markdown: string;
   smtp: SmtpSettings | null;
   oauth: OAuthSettings;
+  billing: BillingSettings;
 };
 
 export type SettingKey = keyof Settings;
-export type EditableKey = Exclude<SettingKey, "smtp" | "oauth">;
+export type EditableKey = Exclude<SettingKey, "smtp" | "oauth" | "billing">;
 
 type Kind = "bool" | "int" | "string" | "signup" | "enum" | "list" | "secret" | "markdown";
 
 export type SettingDef = {
   key: EditableKey;
-  group: "Sign-up & accounts" | "Limits" | "Abuse protection" | "Traffic capture & retention" | "Branding" | "Legal pages";
+  group: "Sign-up & accounts" | "Limits" | "Pro plan" | "Teams" | "Abuse protection" | "Traffic capture & retention" | "Branding" | "Legal pages";
   label: string;
   help: string;
   kind: Kind;
@@ -229,6 +301,106 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 0,
     max: 525_600,
     fallback: () => envInt("TUND_MAX_TUNNEL_LIFETIME", 0),
+  },
+  {
+    key: "pro_limit_tunnels",
+    group: "Pro plan",
+    label: "Online tunnels per account",
+    help: "The limits above are the Free plan; Pro accounts get these instead (never less than Free), plus custom domains and TCP/TLS tunnels. 0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100000,
+    fallback: () => 10,
+  },
+  {
+    key: "pro_limit_pinned",
+    group: "Pro plan",
+    label: "Static hostnames and TCP ports per account",
+    help: "0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100000,
+    fallback: () => 10,
+  },
+  {
+    key: "pro_limit_domains",
+    group: "Pro plan",
+    label: "Custom domains per account",
+    help: "0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100000,
+    fallback: () => 5,
+  },
+  {
+    key: "pro_limit_teams",
+    group: "Pro plan",
+    label: "Teams an account may own",
+    help: "0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100000,
+    fallback: () => 10,
+  },
+  {
+    key: "pro_limit_bandwidth_kbps",
+    group: "Pro plan",
+    label: "Throughput per account (kbit/s, each direction)",
+    help: "0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100_000_000,
+    fallback: () => 0,
+  },
+  {
+    key: "pro_limit_transfer_gb",
+    group: "Pro plan",
+    label: "Transfer per account and month (GB)",
+    help: "0 = unlimited. Without a value: 10× the Free transfer.",
+    kind: "int",
+    min: 0,
+    max: 10_000_000,
+    fallback: () => 10 * envInt("TUND_TRANSFER_GB", 0),
+  },
+  {
+    key: "pro_limit_tunnel_lifetime",
+    group: "Pro plan",
+    label: "Maximum tunnel lifetime (minutes)",
+    help: "0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 525_600,
+    fallback: () => 0,
+  },
+  {
+    key: "team_seats",
+    group: "Teams",
+    label: "Members included in a team plan",
+    help: "With billing on, a team without a plan has only its owner; Team and Team Pro include this many members.",
+    kind: "int",
+    min: 1,
+    max: 100000,
+    fallback: () => 5,
+  },
+  {
+    key: "team_seat_pack",
+    group: "Teams",
+    label: "Members per extra seat pack",
+    help: "Teams buy extra members in packs of this size (Admin → Billing sets the price).",
+    kind: "int",
+    min: 1,
+    max: 1000,
+    fallback: () => 5,
+  },
+  {
+    key: "team_custom_domains",
+    group: "Teams",
+    label: "Custom domains per team plan",
+    help: "Shared by all members, also those on Free. 0 = unlimited.",
+    kind: "int",
+    min: 0,
+    max: 100000,
+    fallback: () => 1,
   },
   {
     key: "auto_pin",
@@ -428,8 +600,8 @@ export const SETTING_DEFS: SettingDef[] = [
 const DEF = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
 export function defaults(): Settings {
-  const out = Object.fromEntries(SETTING_DEFS.map((d) => [d.key, d.fallback()])) as Omit<Settings, "smtp" | "oauth">;
-  return { ...out, smtp: null, oauth: {} };
+  const out = Object.fromEntries(SETTING_DEFS.map((d) => [d.key, d.fallback()])) as Omit<Settings, "smtp" | "oauth" | "billing">;
+  return { ...out, smtp: null, oauth: {}, billing: DEFAULT_BILLING };
 }
 
 /** Validates a stored or submitted value for `key`; returns null when it's unusable. */
@@ -506,6 +678,25 @@ async function load(): Promise<Cache> {
       stored.add(key);
       continue;
     }
+    if (key === "billing") {
+      const v = (r.value ?? {}) as Partial<BillingSettings>;
+      const prices = { ...DEFAULT_PRICES };
+      for (const k of PRICE_KEYS) {
+        const n = Number(v.prices?.[k]);
+        if (Number.isInteger(n) && n >= 0) prices[k] = n;
+      }
+      value.billing = {
+        enabled: v.enabled === true,
+        secret_key_enc: typeof v.secret_key_enc === "string" ? v.secret_key_enc : "",
+        webhook_secret_enc: typeof v.webhook_secret_enc === "string" ? v.webhook_secret_enc : "",
+        webhook_id: typeof v.webhook_id === "string" ? v.webhook_id : "",
+        currency: typeof v.currency === "string" && /^[a-z]{3}$/.test(v.currency) ? v.currency : "usd",
+        automatic_tax: v.automatic_tax === true,
+        prices,
+      };
+      stored.add(key);
+      continue;
+    }
     if (!DEF.has(key as EditableKey)) continue;
     const c = coerce(key as EditableKey, r.value);
     if (c !== null) {
@@ -513,6 +704,8 @@ async function load(): Promise<Cache> {
       stored.add(key);
     }
   }
+  // Pro transfer without a value: 10× Free (like the edge).
+  if (!stored.has("pro_limit_transfer_gb")) value.pro_limit_transfer_gb = 10 * value.limit_transfer_gb;
   return { at: Date.now(), value, stored };
 }
 

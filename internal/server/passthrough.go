@@ -12,11 +12,11 @@ import (
 // untrusted-account settings (untrusted_tcp, untrusted_tls) still apply on top.
 
 func (s *Server) passthroughAllowed(ctx context.Context, userID string) (bool, error) {
-	l, err := s.store.UserLimits(ctx, userID)
+	plan, l, err := s.accountPlan(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-	return featureEnabled(s.rt().Passthrough, l.IsAdmin, l.Passthrough), nil
+	return featureEnabled(plan.Passthrough, l.IsAdmin, l.Passthrough), nil
 }
 
 // recheckPassthrough ends the TCP and TLS tunnels of accounts that may no
@@ -43,4 +43,4 @@ func (s *Server) recheckPassthrough(ctx context.Context, userID string) {
 	}
 }
 
-const errPassthroughOff = "TCP and TLS tunnels are not enabled for your account on this server; ask the administrator"
+const errPassthroughOff = "TCP and TLS tunnels are not part of your plan on this server; upgrade in the dashboard or ask the administrator"

@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Globe, ShieldCheck, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { CUSTOM_DOMAINS_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
+import { customDomainsEnabled, customDomainsOffMessage, passthroughEnabled } from "@/lib/abuse";
+import { billingEnabled, PLAN_LABEL, teamBilling } from "@/lib/plans";
+import { teamSubscription } from "@/lib/billing";
+import { getSettings } from "@/lib/settings";
+import { billingPortalAction } from "@/app/actions/billing";
+import { PortalButton, SeatPacks, SubscribeTeam, type TeamPrices } from "./team-billing";
 import { publicConfig } from "@/lib/config";
 import { serverAddresses } from "@/lib/servers";
 import { db } from "@/lib/db";
@@ -26,9 +31,10 @@ function Usage({ used, limit }: { used: number; limit: number | null }) {
   return <span className={`text-[12.5px] tabular ${used >= limit ? "font-medium text-ink" : "text-muted"}`}>{used} of {limit} used</span>;
 }
 
-export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
+export default async function TeamPage({ params, searchParams }: PageProps<"/teams/[slug]">) {
   const user = await requireUser();
   const { slug } = await params;
+  const { checkout, billing_error: billingError } = await searchParams;
   const m = await membershipBySlug(user.id, slug);
   // Non-members get the same answer as for a team that doesn't exist.
   if (!m) notFound();
@@ -56,12 +62,28 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
     domainUsage(user, "subdomain", { teamId: team.id }),
     domainUsage(user, "custom", { teamId: team.id }),
   ]);
-  const [tcpRange, tcpPorts, customOn, passthroughOn] = await Promise.all([
+  const [tcpRange, tcpPorts, userCustomOn, passthroughOn, billing] = await Promise.all([
     tcpConfig(),
     listTcpReservations(user.id, { teamId: team.id }),
     customDomainsEnabled(user),
     passthroughEnabled(user),
+    teamBilling(team.id),
   ]);
+  // A team with a plan has its own custom domains; members don't need Pro.
+  const customOn = billing.plan !== null || userCustomOn;
+  const [billingOn, sub, settings] = await Promise.all([billingEnabled(), teamSubscription(team.id), getSettings()]);
+  const pr = settings.billing.prices;
+  const prices: TeamPrices = {
+    currency: settings.billing.currency,
+    team: { month: pr.team_month, year: pr.team_year, seatsMonth: pr.team_seats_month, seatsYear: pr.team_seats_year },
+    team_pro: { month: pr.team_pro_month, year: pr.team_pro_year, seatsMonth: pr.team_pro_seats_month, seatsYear: pr.team_pro_seats_year },
+    seats: settings.team_seats,
+    pack: settings.team_seat_pack,
+  };
+  const paid = sub?.active ? sub : null;
+  const payer = paid?.payerId
+    ? ((await db()`select email from users where id = ${paid.payerId}`)[0]?.email as string | undefined)
+    : undefined;
   // Static TCP ports only for accounts that may open TCP tunnels.
   const tcp = passthroughOn ? tcpRange : null;
   cfg.passthrough = passthroughOn;
@@ -90,8 +112,10 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
     pinned.limit !== null && pinned.used >= pinned.limit
       ? `This team uses all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames${tcp ? " and TCP ports" : ""}) it can have.`
       : null;
-  const customFull = !customOn
-    ? CUSTOM_DOMAINS_OFF
+  const customFull = custom.locked
+    ? custom.locked
+    : !customOn
+    ? await customDomainsOffMessage()
     : custom.limit !== null && custom.used >= custom.limit
       ? `This team uses all ${custom.limit} custom ${custom.limit === 1 ? "domain" : "domains"} it can have.`
       : null;
@@ -111,6 +135,66 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           </>
         }
       />
+
+      {billingOn || billing.plan ? (
+        <Panel
+          id="billing"
+          title="Plan"
+          description={
+            billing.plan
+              ? `${PLAN_LABEL[billing.plan]}${billing.granted ? ", provided by the administrators of this server" : paid ? `, billed ${paid.interval === "year" ? "yearly" : "monthly"}${paid.periodEnd ? `; ${paid.cancelAtPeriodEnd ? "ends" : "renews"} ${formatDateTime(paid.periodEnd).split(",").slice(0, 2).join(",")}` : ""}` : ""}. ${billing.members} of ${billing.seats ?? "unlimited"} seats used.`
+              : "This team has no plan: only its owner can be in it. A plan adds members and a shared custom domain."
+          }
+          className="mb-6"
+          actions={
+            paid && paid.payerId === user.id ? (
+              <form action={billingPortalAction}>
+                <PortalButton slug={team.slug} />
+              </form>
+            ) : null
+          }
+        >
+          {checkout === "done" ? (
+            <p role="status" className="border-b border-line bg-ok-wash px-4 py-2.5 text-[13px] text-ok">
+              Thank you! The plan shows up as soon as Stripe confirms the payment, usually within a few seconds.
+            </p>
+          ) : null}
+          {typeof billingError === "string" && billingError ? (
+            <p role="alert" className="border-b border-line bg-danger-wash px-4 py-2.5 text-[13px] text-danger">
+              {billingError}
+            </p>
+          ) : null}
+          {paid?.status === "past_due" ? (
+            <p role="alert" className="border-b border-line bg-danger-wash px-4 py-2.5 text-[13px] text-danger">
+              The last payment failed. {paid.payerId === user.id ? "Update the payment method under Manage subscription." : `Ask ${payer ?? "the owner who pays"} to update the payment method.`}
+            </p>
+          ) : null}
+          <div className="p-4">
+            {!billing.plan ? (
+              role === "owner" ? (
+                <SubscribeTeam teamId={team.id} prices={prices} members={billing.members} />
+              ) : (
+                <p className="text-[13px] text-ink-2">Ask an owner of the team to subscribe.</p>
+              )
+            ) : paid && paid.payerId === user.id ? (
+              <SeatPacks
+                teamId={team.id}
+                packs={paid.seatPacks}
+                prices={prices}
+                members={billing.members}
+                interval={paid.interval}
+                plan={paid.plan === "team_pro" ? "team_pro" : "team"}
+              />
+            ) : (
+              <p className="text-[13px] text-ink-2">
+                {billing.granted
+                  ? "Ask the administrators of this server for more seats."
+                  : `Paid by ${payer ?? "another owner"}, who can add seats.`}
+              </p>
+            )}
+          </div>
+        </Panel>
+      ) : null}
 
       <Panel
         title="Members"

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Globe, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { CUSTOM_DOMAINS_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
+import { customDomainsEnabled, customDomainsOffMessage, passthroughEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
 import { serverAddresses } from "@/lib/servers";
 import { loadDomainItems, myTeamDomains } from "@/lib/domain-items";
@@ -51,7 +51,7 @@ export default async function DomainsPage() {
       ? `You're using all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames${tcp ? " and TCP ports" : ""}) your account can have. Release one to add another.`
       : null;
   const customFull = !customOn
-    ? CUSTOM_DOMAINS_OFF
+    ? await customDomainsOffMessage()
     : custom.limit !== null && custom.used >= custom.limit
       ? `You're using all ${custom.limit} custom ${custom.limit === 1 ? "domain" : "domains"} your account can have. Remove one to add another.`
       : null;

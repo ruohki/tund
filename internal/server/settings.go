@@ -28,6 +28,11 @@ type Runtime struct {
 	Passthrough              bool   // TCP and TLS tunnels; users.passthrough overrides it
 	InstanceName             string // Admin → Settings → Branding; shown on the edge's pages
 
+	// Pro plan (pro_* settings): replaces the limits above for Pro accounts,
+	// which always get custom domains and TCP/TLS tunnels (see plan.go).
+	ProMaxTunnels, ProMaxPinned, ProMaxDomains, ProMaxTeams int
+	ProBandwidthKbps, ProTransferGB, ProTunnelLifetime      int
+
 	// Abuse protection
 	UntrustedCustomDomains string // allow | review | deny
 	WarnCustomDomains      bool
@@ -61,6 +66,11 @@ func defaultRuntime(c *Config) *Runtime {
 		CustomDomains:     c.CustomDomains,
 		Passthrough:       c.Passthrough,
 		InstanceName:      defaultInstanceName,
+
+		ProMaxTunnels: proDefaultTunnels,
+		ProMaxPinned:  proDefaultPinned,
+		ProMaxDomains: proDefaultDomains,
+		ProMaxTeams:   proDefaultTeams,
 
 		UntrustedCustomDomains: c.UntrustedCustomDomains,
 		WarnCustomDomains:      true,
@@ -129,6 +139,20 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			ok = json.Unmarshal(raw, &r.PhishingAutoBlock) == nil
 		case "limit_teams":
 			ok = setInt(raw, &r.MaxTeamsPerUser, 0, 1<<20)
+		case "pro_limit_tunnels":
+			ok = setInt(raw, &r.ProMaxTunnels, 0, 1<<20)
+		case "pro_limit_pinned":
+			ok = setInt(raw, &r.ProMaxPinned, 0, 1<<20)
+		case "pro_limit_domains":
+			ok = setInt(raw, &r.ProMaxDomains, 0, 1<<20)
+		case "pro_limit_teams":
+			ok = setInt(raw, &r.ProMaxTeams, 0, 1<<20)
+		case "pro_limit_bandwidth_kbps":
+			ok = setInt(raw, &r.ProBandwidthKbps, 0, 100_000_000)
+		case "pro_limit_transfer_gb":
+			ok = setInt(raw, &r.ProTransferGB, 0, 10_000_000)
+		case "pro_limit_tunnel_lifetime":
+			ok = setInt(raw, &r.ProTunnelLifetime, 0, 525_600)
 		case "auto_pin":
 			ok = json.Unmarshal(raw, &r.AutoPin) == nil
 		case "browser_warning":
@@ -153,6 +177,9 @@ func (s *Server) loadSettings(ctx context.Context) error {
 		if !ok {
 			logf("settings: ignoring invalid value for %s: %s", key, raw)
 		}
+	}
+	if _, set := rows["pro_limit_transfer_gb"]; !set {
+		r.ProTransferGB = proTransferFactor * r.TransferGB // default: 10× Free
 	}
 	s.runtime.Store(r)
 	for _, t := range s.reg.Tunnels() {

@@ -93,8 +93,12 @@ func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 	for _, t := range teamRows {
 		teams = append(teams, map[string]string{"slug": t.Slug, "name": t.Name, "role": t.Role})
 	}
-	rt := s.rt()
-	limits := map[string]int{"tunnels": rt.MaxTunnelsPerUser, "pinned": rt.MaxPinnedPerUser, "domains": rt.MaxDomainsPerUser, "teams": rt.MaxTeamsPerUser}
+	plan, _, err := s.accountPlan(r.Context(), acct.UserID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	limits := map[string]int{"tunnels": plan.Tunnels, "pinned": plan.Pinned, "domains": plan.Domains, "teams": plan.Teams}
 	if u.IsAdmin {
 		limits = map[string]int{"tunnels": 0, "pinned": 0, "domains": 0, "teams": 0}
 	}
@@ -116,7 +120,7 @@ func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"account":          map[string]any{"id": u.ID, "email": u.Email, "name": u.Name, "is_admin": u.IsAdmin},
+		"account":          map[string]any{"id": u.ID, "email": u.Email, "name": u.Name, "is_admin": u.IsAdmin, "plan": map[bool]string{true: "pro", false: "free"}[plan.Pro]},
 		"server":           map[string]any{"base_domain": s.cfg.BaseDomain, "dashboard_url": s.cfg.DashboardURL(), "version": Version},
 		"limits":           limits,
 		"static_hostnames": hosts,

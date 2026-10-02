@@ -344,6 +344,23 @@ func (s *Server) onConfigChange(payload string) {
 			logf("reload blocked hosts: %v", err)
 		}
 		return
+	case "plans":
+		// A subscription, grant or team plan changed: limits and features of
+		// any account may have moved.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		// Paying accounts count as trusted (browser warning).
+		seen := map[string]bool{}
+		for _, t := range s.reg.Tunnels() {
+			if !seen[t.UserID] && (ev.ID == "" || t.UserID == ev.ID) {
+				seen[t.UserID] = true
+				s.refreshWarning(t.UserID)
+			}
+		}
+		s.refreshMeters(ctx, ev.ID)
+		s.recheckCustomDomains(ctx, ev.ID)
+		s.recheckPassthrough(ctx, ev.ID)
+		return
 	case "settings":
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

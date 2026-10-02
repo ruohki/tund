@@ -21,7 +21,7 @@ export type FieldView = {
   defaultLabel: string;
 };
 
-const GROUPS = ["Sign-up & accounts", "Limits", "Abuse protection", "Traffic capture & retention", "Branding", "Legal pages"];
+const GROUPS = ["Sign-up & accounts", "Limits", "Pro plan", "Teams", "Abuse protection", "Traffic capture & retention", "Branding", "Legal pages"];
 
 /** kbit/s with the same value in Mbit/s next to it. */
 function KbpsInput({ f, id }: { f: FieldView; id: string }) {

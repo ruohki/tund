@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { UsersRound } from "lucide-react";
 import { db } from "@/lib/db";
 import { formatDateTime, formatNumber, timeAgo } from "@/lib/format";
-import { EmptyState, Panel } from "@/components/ui";
+import Link from "next/link";
+import { Badge, EmptyState, Panel } from "@/components/ui";
+import { PLAN_LABEL, type TeamPlan } from "@/lib/plans";
 import { ConfirmSubmit } from "@/components/client-ui";
 import { adminDeleteTeamAction } from "@/app/actions/admin";
 import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
@@ -19,7 +21,8 @@ export default async function AdminTeamsPage({ searchParams }: PageProps<"/admin
       (select string_agg(u.email, ', ' order by u.email) from team_members m join users u on u.id = m.user_id
         where m.team_id = t.id and m.role = 'owner') as owners,
       (select count(*)::int from domains d where d.team_id = t.id) as domains,
-      (select count(*)::int from oidc_providers p where p.team_id = t.id) as providers
+      (select count(*)::int from oidc_providers p where p.team_id = t.id) as providers,
+      team_plan(t.id) as plan, t.plan_granted is not null as granted
     from teams t order by t.created_at desc
     limit ${PAGE_SIZE} offset ${pageOffset(page)}`,
   ]);
@@ -32,6 +35,7 @@ export default async function AdminTeamsPage({ searchParams }: PageProps<"/admin
               <tr className="border-b border-line text-left text-[12px] text-muted">
                 <th className="px-4 py-2 font-medium">Team</th>
                 <th className="px-4 py-2 font-medium">Owners</th>
+                <th className="px-4 py-2 font-medium">Plan</th>
                 <th className="px-4 py-2 font-medium">Members</th>
                 <th className="px-4 py-2 font-medium">Domains</th>
                 <th className="px-4 py-2 font-medium">Providers</th>
@@ -43,10 +47,16 @@ export default async function AdminTeamsPage({ searchParams }: PageProps<"/admin
               {teams.map((t) => (
                 <tr key={t.id}>
                   <td className="px-4 py-2.5">
-                    <span className="font-medium text-ink">{t.name}</span>
+                    <Link href={`/admin/teams/${t.id}`} className="font-medium text-ink hover:underline">
+                      {t.name}
+                    </Link>
                     <span className="block font-mono text-[12px] text-muted">{t.slug}</span>
                   </td>
                   <td className="px-4 py-2.5 text-ink-2">{t.owners ?? "none"}</td>
+                  <td className="px-4 py-2.5">
+                    {t.plan ? <Badge tone="ok">{PLAN_LABEL[t.plan as TeamPlan]}</Badge> : <span className="text-muted">none</span>}
+                    {t.granted ? <span className="ml-1.5 text-[12px] text-muted">exempt</span> : null}
+                  </td>
                   <td className="px-4 py-2.5 tabular">{t.members}</td>
                   <td className="px-4 py-2.5 tabular">{t.domains}</td>
                   <td className="px-4 py-2.5 tabular">{t.providers}</td>

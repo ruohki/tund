@@ -1,5 +1,5 @@
 import "server-only";
-import { PASSTHROUGH_OFF, passthroughEnabled } from "./abuse";
+import { passthroughEnabled, passthroughOffMessage } from "./abuse";
 import type { User } from "./auth";
 import { db, notify } from "./db";
 import { edgeStatus } from "./admin-stats";
@@ -52,7 +52,7 @@ async function changed(port: number, owner: DomainOwner) {
 export async function reserveTcpPort(user: User, owner: DomainOwner, port: number | null): Promise<ReserveResult> {
   const cfg = await tcpConfig();
   if (!cfg) return { ok: false, error: "TCP tunnels are not enabled on this server." };
-  if (!(await passthroughEnabled(user))) return { ok: false, error: PASSTHROUGH_OFF };
+  if (!(await passthroughEnabled(user))) return { ok: false, error: await passthroughOffMessage() };
   if (port !== null && (!Number.isInteger(port) || port < cfg.from || port > cfg.to)) {
     return { ok: false, error: `Pick a port between ${cfg.from} and ${cfg.to}.` };
   }

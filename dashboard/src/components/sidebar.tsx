@@ -7,6 +7,7 @@ import {
   Activity,
   BookOpen,
   Cable,
+  CreditCard,
   Globe,
   KeyRound,
   LayoutGrid,
@@ -57,7 +58,16 @@ function NavLink({ href, label, icon: Icon, pathname }: { href: string; label: s
   );
 }
 
-export function Sidebar({ user, brand }: { user: { email: string; name: string; isAdmin: boolean }; brand: string }) {
+export function Sidebar({
+  user,
+  brand,
+  billing,
+}: {
+  user: { email: string; name: string; isAdmin: boolean; pro: boolean };
+  brand: string;
+  /** Show Billing (Stripe is set up). */
+  billing: boolean;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -80,6 +90,7 @@ export function Sidebar({ user, brand }: { user: { email: string; name: string; 
         <p className="px-2.5 pb-1.5 text-[12px] text-muted">Account</p>
         <div className="flex flex-col gap-0.5">
           <NavLink href="/settings" label="Settings" icon={Settings} pathname={pathname} />
+          {billing || user.pro ? <NavLink href="/billing" label={user.pro ? "Billing" : "Upgrade to Pro"} icon={CreditCard} pathname={pathname} /> : null}
           {user.isAdmin ? <NavLink href="/admin" label="Admin" icon={Users} pathname={pathname} /> : null}
         </div>
       </div>

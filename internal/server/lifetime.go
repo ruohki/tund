@@ -35,11 +35,11 @@ func effectiveLifetime(globalMinutes int, isAdmin bool, override *int) time.Dura
 }
 
 func (s *Server) tunnelLifetime(ctx context.Context, userID string) (time.Duration, error) {
-	l, err := s.store.UserLimits(ctx, userID)
+	plan, l, err := s.accountPlan(ctx, userID)
 	if err != nil {
 		return 0, err
 	}
-	return effectiveLifetime(s.rt().TunnelLifetime, l.IsAdmin, l.TunnelLifetime), nil
+	return effectiveLifetime(plan.TunnelLifetime, l.IsAdmin, l.TunnelLifetime), nil
 }
 
 func (s *Server) lifetimeLoop(ctx context.Context) {
