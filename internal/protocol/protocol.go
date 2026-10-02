@@ -135,6 +135,48 @@ type Bind struct {
 	LocalAddr  string `json:"local_addr"`
 	HostHeader string `json:"host_header,omitempty"`
 	Auth       *Auth  `json:"auth,omitempty"`
+	// Rules are applied by the edge (http only).
+	Rules *Rules `json:"rules,omitempty"`
+}
+
+// Rules shape the traffic of an HTTP tunnel at the edge.
+type Rules struct {
+	// RequestHeaders change what the local service receives,
+	// ResponseHeaders what visitors receive.
+	RequestHeaders  *HeaderRules `json:"request_headers,omitempty"`
+	ResponseHeaders *HeaderRules `json:"response_headers,omitempty"`
+	CORS            *CORS        `json:"cors,omitempty"`
+	// RateLimit caps requests per visitor IP, e.g. "100/m" (per s, m or h).
+	RateLimit string `json:"rate_limit,omitempty"`
+	// Routes send path prefixes to other local addresses; the longest
+	// matching prefix wins, everything else goes to Bind.LocalAddr.
+	Routes []Route `json:"routes,omitempty"`
+}
+
+// HeaderRules remove headers, then set (replace) others.
+type HeaderRules struct {
+	Set    map[string]string `json:"set,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+}
+
+// CORS makes the edge answer preflight requests and add the
+// Access-Control-* headers to responses (replacing the local service's).
+type CORS struct {
+	Origins []string `json:"origins"`           // exact origins or "*"
+	Methods []string `json:"methods,omitempty"` // default: the common methods
+	Headers []string `json:"headers,omitempty"` // allowed request headers; default: whatever the browser asks for
+	Expose  []string `json:"expose,omitempty"`  // response headers scripts may read
+	// Credentials allows cookies; not possible with the "*" origin.
+	Credentials bool `json:"credentials,omitempty"`
+	MaxAge      int  `json:"max_age,omitempty"` // seconds browsers cache a preflight; default 600
+}
+
+// Route forwards requests under a path prefix to another local address.
+type Route struct {
+	Path      string `json:"path"`       // "/api" matches /api and /api/…
+	LocalAddr string `json:"local_addr"` // like Bind.LocalAddr
+	// StripPrefix removes Path before forwarding (/api/users → /users).
+	StripPrefix bool `json:"strip_prefix,omitempty"`
 }
 
 // Auth is an access policy requested by the client. It overrides the policy
@@ -189,6 +231,8 @@ type StreamHeader struct {
 	Tunnel string `json:"tunnel"`
 	// Remote is the visitor's address (TCP/TLS tunnels), for display.
 	Remote string `json:"remote,omitempty"`
+	// Route selects the local address: 0 = Bind.LocalAddr, n = Rules.Routes[n-1].
+	Route int `json:"route,omitempty"`
 }
 
 // ConnEvent summarizes a finished TCP/TLS connection.

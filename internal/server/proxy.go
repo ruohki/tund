@@ -34,6 +34,7 @@ type exchange struct {
 	respHeader http.Header
 	err        string
 	recorded   atomic.Bool
+	route      *tunnelRoute // the route that served the request, nil = the tunnel's address
 }
 
 // captureReader passes data through while keeping the first max bytes.
@@ -78,8 +79,8 @@ func (c *captureReader) snapshot() ([]byte, int64, bool) {
 func (s *Server) setupProxy(t *Tunnel) {
 	as := t.session
 	t.transport = &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			st, err := as.openStream(ctx, t.BindID)
+		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
+			st, err := as.openStreamTo(ctx, t.BindID, routeOfAddr(addr))
 			if err != nil {
 				return nil, err
 			}
@@ -102,14 +103,24 @@ func (s *Server) setupProxy(t *Tunnel) {
 			pr.SetXForwarded()
 			pr.Out.Header.Set("X-Forwarded-Proto", s.cfg.PublicScheme)
 			pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
-			if t.HostHeader != "" {
-				pr.Out.Host = t.HostHeader
+			hostHeader := t.HostHeader
+			if route := t.rules.route(pr.In.URL.Path); route != nil {
+				pr.Out.URL.Host = routeHost(route.index)
+				route.stripPath(pr.Out.URL)
+				hostHeader = route.hostHeader
+				if ex, _ := pr.In.Context().Value(exchangeKey{}).(*exchange); ex != nil {
+					ex.route = route
+				}
+			}
+			if hostHeader != "" {
+				pr.Out.Host = hostHeader
 			} else {
 				pr.Out.Host = pr.In.Host
 			}
 			stripAuthCookie(pr.Out.Header)
 			pr.Out.Header.Del(protocol.HeaderSkipWarning)
 			stripTundHeaders(pr.Out.Header)
+			t.rules.applyRequest(pr.Out.Header)
 			setIdentityHeaders(pr.Out.Header, identityFrom(pr.In.Context()))
 		},
 		ModifyResponse: func(resp *http.Response) error {
@@ -117,6 +128,7 @@ func (s *Server) setupProxy(t *Tunnel) {
 			if ex == nil {
 				return nil
 			}
+			t.rules.applyResponse(resp.Header, ex.in.Header.Get("Origin"))
 			ex.ttfb = time.Since(ex.start)
 			ex.status = resp.StatusCode
 			ex.respHeader = resp.Header.Clone()
@@ -133,6 +145,10 @@ func (s *Server) setupProxy(t *Tunnel) {
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			ex, _ := r.Context().Value(exchangeKey{}).(*exchange)
+			local := t.LocalAddr
+			if ex != nil && ex.route != nil {
+				local = ex.route.localAddr
+			}
 			var le *protocol.LocalError
 			switch {
 			case errors.Is(err, context.Canceled):
@@ -146,7 +162,7 @@ func (s *Server) setupProxy(t *Tunnel) {
 					ex.status = http.StatusBadGateway
 				}
 				s.renderPage(w, r, http.StatusBadGateway, pageBadGateway, map[string]any{
-					"Host": t.Hostname, "Local": t.LocalAddr, "Detail": le.Msg,
+					"Host": t.Hostname, "Local": local, "Detail": le.Msg,
 				})
 			default:
 				if ex != nil {
@@ -154,7 +170,7 @@ func (s *Server) setupProxy(t *Tunnel) {
 					ex.status = http.StatusBadGateway
 				}
 				s.renderPage(w, r, http.StatusBadGateway, pageBadGateway, map[string]any{
-					"Host": t.Hostname, "Local": t.LocalAddr, "Detail": err.Error(),
+					"Host": t.Hostname, "Local": local, "Detail": err.Error(),
 				})
 			}
 		},

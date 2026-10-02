@@ -105,6 +105,38 @@ tunnels:
       allow: ["@company.com"]
 ```
 
+## Traffic rules
+
+HTTP tunnels can shape their traffic at the edge, before it reaches your machine:
+
+```sh
+tund http 3000 --route /api=8080                    # /api/… goes to localhost:8080, everything else to :3000
+tund http 3000 --cors https://app.example.com       # preflights answered by the server, CORS headers added
+tund http 3000 --rate-limit 60/m                    # 429 for visitors sending more than 60 requests a minute
+tund http 3000 --request-header "X-Env: preview" --response-header-remove Server
+```
+
+The same rules in `tund.yml`:
+
+```yaml
+tunnels:
+  app:
+    addr: 3000
+    routes:
+      - path: /api
+        addr: 8080
+        strip_prefix: true      # /api/users reaches :8080 as /users
+    cors:
+      origins: ["https://app.example.com"]
+      credentials: true
+    rate_limit: 100/m           # per visitor IP
+    request_headers:
+      set: {X-Env: preview}
+      remove: [X-Debug]
+    response_headers:
+      set: {X-Frame-Options: DENY}
+```
+
 ## TCP and TLS tunnels
 
 ```sh

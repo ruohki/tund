@@ -184,7 +184,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if s.rateLimited(w, r, t) {
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/_tund/") && s.serveTunnelAuth(w, r, t) {
+		return
+	}
+	// Preflights carry no cookies: answer them before the warning page and
+	// the access policy would turn them away.
+	if s.answerPreflight(w, r, t) {
 		return
 	}
 	if s.needsWarning(r, t) {

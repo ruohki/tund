@@ -100,6 +100,17 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 * Visitor cookie `_tund_auth` (HMAC-signed with `TUND_SECRET`, host-only, 7 days, bound to a fingerprint of the policy so changing it logs everybody out). The edge strips it before forwarding.
 * Paths under `/_tund/` on tunnel hosts belong to the edge.
 
+## Traffic rules (HTTP tunnels)
+
+`bind.rules` (`protocol.Rules`), applied by the node holding the tunnel; TCP/TLS binds with rules are refused. Clients refuse to send rules to servers older than 0.5.0 (which would ignore them).
+
+* `request_headers` / `response_headers`: `{"set":{"Name":"value"},"remove":["Name"]}` — removals first, then sets (replace). Request rules apply after the edge strips its own cookies and `X-Tund-*` headers and before the identity headers are set; response rules apply before the response is recorded, so the inspector shows what visitors got. `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Upgrade`, `Keep-Alive`, `Te`, `Trailer`, `Proxy-Connection` and `X-Tund-*` cannot be changed. At most 32 rules per direction.
+* `cors`: `{"origins":["https://app.example.com" | "*"],"methods","headers","expose","credentials","max_age"}`. Preflights (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) are answered by the edge with 204 right after the IP allow list and rate limit, before the browser warning and the access policy (preflights carry no cookies), and recorded. Responses get the local service's `Access-Control-*` headers replaced: `Access-Control-Allow-Origin` echoes an allowed origin (or `*`), plus `Allow-Credentials`/`Expose-Headers` when set, and `Vary: Origin`. Defaults: methods `GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS`, allowed headers = whatever the browser asks for, `max_age` 600. `credentials` needs explicit origins.
+* `rate_limit`: `"<n>/s|m|h"` per visitor IP (token bucket of size n). Over the limit the edge answers 429 with `Retry-After` before anything else (also before the password form), without recording the request; the client gets a `notice` at most once a minute with the number of rejected requests. Up to 50 000 visitors are tracked per tunnel.
+* `routes`: `[{"path":"/api","local_addr":"http://localhost:8080","strip_prefix":false}]` (at most 16). The longest matching prefix wins (`/api` matches `/api` and `/api/…`), everything else goes to `local_addr`. The data stream header carries `"route": n` (1-based index into `routes`, 0/absent = `local_addr`) and the client dials that address; `host_header: rewrite` uses the route's host. `strip_prefix` removes the prefix before forwarding.
+
+CLI: `--route /api=8080`, `--request-header "Name: value"`, `--request-header-remove Name`, `--response-header …`, `--response-header-remove …`, `--cors <origin>`, `--rate-limit 100/m`; `tund.yml` keys `routes` (`path`, `addr`, `strip_prefix`), `request_headers`/`response_headers` (`set`, `remove`), `cors`, `rate_limit`.
+
 ## Server environment
 
 | var | default | |

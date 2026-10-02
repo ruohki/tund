@@ -74,6 +74,13 @@ type TunnelConfig struct {
 	// RestartOnExpiry starts the tunnel again when the server closes it for
 	// reaching its maximum lifetime.
 	RestartOnExpiry bool `yaml:"restart_on_expiry,omitempty"`
+
+	// Traffic rules (http): see protocol.Rules.
+	RequestHeaders  *HeaderRulesConfig `yaml:"request_headers,omitempty"`
+	ResponseHeaders *HeaderRulesConfig `yaml:"response_headers,omitempty"`
+	CORS            *CORSConfig        `yaml:"cors,omitempty"`
+	RateLimit       string             `yaml:"rate_limit,omitempty"` // e.g. 100/m per visitor IP
+	Routes          []RouteConfig      `yaml:"routes,omitempty"`
 }
 
 // AuthConfig protects a tunnel with a password or an OIDC provider.
@@ -243,6 +250,12 @@ func (t *TunnelConfig) specIn(name, baseDir string) (TunnelSpec, error) {
 		if spec.Auth, err = BuildAuth(t.Auth.Password, t.Auth.OIDC, t.Auth.Allow); err != nil {
 			return TunnelSpec{}, fmt.Errorf("tunnel %q: %w", name, err)
 		}
+	}
+	if spec.Rules, err = BuildRules(RuleOptions{
+		RequestHeaders: t.RequestHeaders, ResponseHeaders: t.ResponseHeaders,
+		CORS: t.CORS, RateLimit: t.RateLimit, RouteConfigs: t.Routes,
+	}); err != nil {
+		return TunnelSpec{}, fmt.Errorf("tunnel %q: %w", name, err)
 	}
 	if err := spec.Validate(); err != nil {
 		return TunnelSpec{}, fmt.Errorf("tunnel %q: %w", name, err)

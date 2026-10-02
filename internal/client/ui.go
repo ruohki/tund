@@ -248,6 +248,18 @@ func boolKV(b bool) string {
 }
 
 func (d *Display) warningRow(t tunnelView) {
+	if t.Rules != nil {
+		for _, r := range t.Rules.Routes {
+			path := r.Path
+			if r.StripPrefix {
+				path += " (prefix stripped)"
+			}
+			d.println(d.row("", d.c(dim, "  "+path+" → ")+r.LocalAddr))
+		}
+		if sum := rulesSummary(t.Rules); sum != "" {
+			d.println(d.row("", d.c(dim, "rules: "+sum)))
+		}
+	}
 	if t.Warning != "" {
 		d.println(d.row("", d.c(yellow, "⚠ "+t.Warning)))
 	}

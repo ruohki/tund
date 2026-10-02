@@ -43,6 +43,8 @@ type TunnelSpec struct {
 	// RestartOnExpiry binds the tunnel again when the server closes it for
 	// reaching the maximum tunnel lifetime.
 	RestartOnExpiry bool
+	// Rules are traffic rules applied by the server (http only, see BuildRules).
+	Rules *protocol.Rules
 }
 
 // Options configure a Client.
@@ -119,6 +121,7 @@ const (
 type tunnel struct {
 	spec   TunnelSpec
 	target localTarget
+	routes []localTarget // spec.Rules.Routes
 
 	// Guarded by Client.mu.
 	status   tunnelStatus
@@ -214,6 +217,15 @@ func New(opts Options) (*Client, error) {
 			return nil, err
 		}
 		t := &tunnel{spec: s, target: target}
+		if s.Rules != nil {
+			for _, r := range s.Rules.Routes {
+				rt, err := parseTarget(r.LocalAddr)
+				if err != nil {
+					return nil, fmt.Errorf("tunnel %q: route %s: %w", s.Name, r.Path, err)
+				}
+				t.routes = append(t.routes, rt)
+			}
+		}
 		if t.termCfg, err = terminationConfig(s.TerminateCert, s.TerminateKey); err != nil {
 			return nil, fmt.Errorf("tunnel %q: %w", s.Name, err)
 		}
@@ -385,6 +397,10 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 		return false, fmt.Errorf("unexpected %q message from server", m.Type)
 	}
 
+	if c.usesRules() && protocol.NewerVersion(featureServerVersion, m.ServerVersion) {
+		return false, &fatalError{fmt.Errorf("%s runs tund %s, which does not support traffic rules (headers, CORS, rate limit, routes); they need %s or newer on the server",
+			c.opts.Server, m.ServerVersion, featureServerVersion)}
+	}
 	first := c.sessions == 0
 	c.sessions++
 	w := welcome{account: m.Account, serverVersion: m.ServerVersion, dashboardURL: strings.TrimRight(m.DashboardURL, "/")}
@@ -625,6 +641,7 @@ func (c *Client) sendBind(ctl *protocol.Control, t *tunnel) error {
 		Pin:        t.spec.Pin,
 		RemotePort: t.spec.RemotePort,
 		AllowIPs:   t.spec.AllowIPs,
+		Rules:      t.spec.Rules,
 	}
 	if p := t.spec.proto(); p != protocol.ProtoHTTP {
 		b.Proto = p
@@ -668,6 +685,15 @@ func (c *Client) shutdown(ctl *protocol.Control) {
 	}
 }
 
+func (c *Client) usesRules() bool {
+	for _, t := range c.tunnels {
+		if t.spec.Rules != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Client) counts() (online, pending, failed, closed int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -694,6 +720,7 @@ type tunnelView struct {
 	Online, Failed, Closed, Static, BrowserWarning                  bool
 	ExpiresAt                                                       time.Time // zero = no maximum lifetime
 	RestartOnExpiry                                                 bool
+	Rules                                                           *protocol.Rules
 }
 
 func (c *Client) view(t *tunnel) tunnelView {
@@ -702,7 +729,7 @@ func (c *Client) view(t *tunnel) tunnelView {
 		Warning: t.warning, Static: t.static, TunnelID: t.tunnelID, BrowserWarning: t.warnPage,
 		Proto: t.spec.proto(), RemotePort: t.remote, Terminated: t.termCfg != nil,
 		Online: t.status == statusOnline, Failed: t.status == statusFailed, Closed: t.status == statusClosed,
-		ExpiresAt: t.expires, RestartOnExpiry: t.spec.RestartOnExpiry,
+		ExpiresAt: t.expires, RestartOnExpiry: t.spec.RestartOnExpiry, Rules: t.spec.Rules,
 	}
 }
 
@@ -748,11 +775,20 @@ func (c *Client) handleStream(s *yamux.Stream) {
 		return
 	}
 
+	target, addr := t.target, t.spec.LocalAddr
+	if h.Route > 0 {
+		if h.Route > len(t.routes) {
+			_ = protocol.WriteStreamError(s, fmt.Sprintf("tunnel %q has no route %d on this client", h.Tunnel, h.Route))
+			s.Close()
+			return
+		}
+		target, addr = t.routes[h.Route-1], t.spec.Rules.Routes[h.Route-1].LocalAddr
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	local, err := t.target.dial(ctx)
+	local, err := target.dial(ctx)
 	cancel()
 	if err != nil {
-		_ = protocol.WriteStreamError(s, fmt.Sprintf("could not connect to %s (%s)", t.spec.LocalAddr, friendlyDialError(err)))
+		_ = protocol.WriteStreamError(s, fmt.Sprintf("could not connect to %s (%s)", addr, friendlyDialError(err)))
 		s.Close()
 		return
 	}

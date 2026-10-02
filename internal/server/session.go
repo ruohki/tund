@@ -231,6 +231,15 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 	if err != nil {
 		return nil, "", err
 	}
+	var rules *tunnelRules
+	if b.Rules != nil {
+		if proto != protocol.ProtoHTTP {
+			return nil, "", bindError("traffic rules (headers, CORS, rate limit, routes) work for HTTP tunnels only")
+		}
+		if rules, err = compileRules(b.Rules, b.HostHeader); err != nil {
+			return nil, "", err
+		}
+	}
 	as.mu.Lock()
 	_, dup := as.tunnels[m.ID]
 	as.mu.Unlock()
@@ -269,6 +278,7 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		allow:     allow,
 		meter:     meter,
 		session:   as,
+		rules:     rules,
 	}
 	if t.Name == "" {
 		t.Name = m.ID
@@ -795,6 +805,15 @@ func (as *AgentSession) openStream(ctx context.Context, bindID string) (net.Conn
 
 // openStreamFor is openStream with the visitor's address for the client's log.
 func (as *AgentSession) openStreamFor(ctx context.Context, bindID, remote string) (net.Conn, error) {
+	return as.dialStream(ctx, protocol.StreamHeader{Tunnel: bindID, Remote: remote})
+}
+
+// openStreamTo opens a data stream to one of the tunnel's routes (0 = its own address).
+func (as *AgentSession) openStreamTo(ctx context.Context, bindID string, route int) (net.Conn, error) {
+	return as.dialStream(ctx, protocol.StreamHeader{Tunnel: bindID, Route: route})
+}
+
+func (as *AgentSession) dialStream(ctx context.Context, h protocol.StreamHeader) (net.Conn, error) {
 	st, err := as.mux.OpenStream()
 	if err != nil {
 		return nil, fmt.Errorf("tunnel session closed: %w", err)
@@ -804,7 +823,7 @@ func (as *AgentSession) openStreamFor(ctx context.Context, bindID, remote string
 	} else {
 		st.SetDeadline(time.Now().Add(15 * time.Second))
 	}
-	if err := protocol.WriteStreamHeader(st, protocol.StreamHeader{Tunnel: bindID, Remote: remote}); err != nil {
+	if err := protocol.WriteStreamHeader(st, h); err != nil {
 		st.Close()
 		return nil, err
 	}

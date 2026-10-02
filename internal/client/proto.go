@@ -103,6 +103,8 @@ func (s TunnelSpec) Validate() error {
 		}
 	case protocol.ProtoTCP:
 		switch {
+		case s.Rules != nil:
+			return errors.New("traffic rules (headers, CORS, rate limit, routes) only apply to http tunnels")
 		case named || s.Random:
 			return errors.New("tcp tunnels get a public port, not a hostname: use a remote port instead of subdomain/domain/random")
 		case s.HostHeader != "":
@@ -114,6 +116,8 @@ func (s TunnelSpec) Validate() error {
 		}
 	case protocol.ProtoTLS:
 		switch {
+		case s.Rules != nil:
+			return errors.New("traffic rules (headers, CORS, rate limit, routes) only apply to http tunnels")
 		case s.RemotePort != 0:
 			return errors.New("a remote port only applies to tcp tunnels")
 		case s.HostHeader != "":

@@ -130,6 +130,7 @@ func newHTTPCmd(g *globals) *cobra.Command {
 		name, subdomain, domain, hostHeader, password, oidc string
 		allow, allowIPs                                     []string
 		pin, random, restart                                bool
+		rules                                               client.RuleOptions
 	)
 	cmd := &cobra.Command{
 		Use:   "http <port | host:port | url>",
@@ -156,7 +157,11 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
   tund http 3000 --allow-ip 203.0.113.0/24        # only this network may connect
   tund http 3000 --password s3cret                # visitors must enter a password
   tund http 3000 --oidc google --oidc-allow @example.com,bob@gmail.com
-  tund http 3000 --oidc acme/okta --oidc-allow group:engineering   # a provider of team "acme"`,
+  tund http 3000 --oidc acme/okta --oidc-allow group:engineering   # a provider of team "acme"
+  tund http 3000 --route /api=8080                # /api/… goes to localhost:8080, the rest to :3000
+  tund http 3000 --cors https://app.example.com   # the server answers CORS preflights
+  tund http 3000 --rate-limit 60/m                # at most 60 requests per minute per visitor
+  tund http 3000 --request-header "X-Env: preview" --response-header-remove Server`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			local, err := client.ParseLocalAddr(args[0])
@@ -170,6 +175,10 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 				return errors.New("--random cannot be combined with --subdomain or --domain")
 			}
 			auth, err := client.BuildAuth(password, oidc, allow)
+			if err != nil {
+				return err
+			}
+			r, err := client.BuildRules(rules)
 			if err != nil {
 				return err
 			}
@@ -188,6 +197,7 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 				AllowIPs:   allowIPs,
 
 				RestartOnExpiry: restart,
+				Rules:           r,
 			}
 			return runSpec(g, spec)
 		},
@@ -204,6 +214,13 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 	f.StringSliceVar(&allow, "oidc-allow", nil, "who may pass OIDC: emails (a@b.com), domains (@b.com) or groups (group:admins); repeatable or comma separated")
 	addAllowIPFlag(f, &allowIPs)
 	addRestartFlag(f, &restart)
+	f.StringArrayVar(&rules.Routes, "route", nil, "send a path prefix to another local address: /api=8080 (repeatable; the longest prefix wins)")
+	f.StringArrayVar(&rules.RequestSet, "request-header", nil, `set a header on requests to your service: "Name: value" (repeatable)`)
+	f.StringSliceVar(&rules.RequestRemove, "request-header-remove", nil, "remove a header from requests to your service (repeatable)")
+	f.StringArrayVar(&rules.ResponseSet, "response-header", nil, `set a header on responses to visitors: "Name: value" (repeatable)`)
+	f.StringSliceVar(&rules.ResponseRemove, "response-header-remove", nil, "remove a header from responses to visitors (repeatable)")
+	f.StringSliceVar(&rules.CORSOrigins, "cors", nil, "answer CORS for these origins at the server, e.g. https://app.example.com or * (repeatable)")
+	f.StringVar(&rules.RateLimit, "rate-limit", "", "requests per visitor IP before answering 429, e.g. 100/m (per s, m or h)")
 	return cmd
 }
 
@@ -234,6 +251,20 @@ Example config:
       addr: 5173
       random: true         # one-off URL, not your static one
       restart_on_expiry: true   # start again after the server's maximum lifetime
+    app:
+      addr: 3000
+      routes:
+        - path: /api
+          addr: 8080
+          strip_prefix: true   # /api/users reaches :8080 as /users
+      cors:
+        origins: ["https://app.example.com"]
+        credentials: true
+      rate_limit: 100/m      # per visitor IP
+      request_headers:
+        set: {X-Env: preview}
+      response_headers:
+        remove: [Server]
     api:
       addr: https://localhost:8443
       domain: api.example.com
