@@ -52,6 +52,16 @@ export async function customDomainsEnabled(user: Pick<User, "isAdmin" | "customD
 export const CUSTOM_DOMAINS_OFF = "Custom domains aren't enabled for your account on this server. Ask an administrator to turn them on.";
 
 /**
+ * Whether the account may open TCP and TLS tunnels: its override, else the
+ * instance setting (admins don't need it). Mirrors passthroughAllowed in the edge.
+ */
+export async function passthroughEnabled(user: Pick<User, "isAdmin" | "passthrough">): Promise<boolean> {
+  return user.passthrough ?? (user.isAdmin || (await getSettings()).passthrough);
+}
+
+export const PASSTHROUGH_OFF = "TCP and TLS tunnels aren't enabled for your account on this server. Ask an administrator to turn them on.";
+
+/**
  * Why this account may not add this custom domain, or null. The edge refuses
  * to bind these even when approved, so they're refused up front.
  */

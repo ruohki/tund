@@ -234,6 +234,13 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		return nil, "", bindError("duplicate tunnel id " + m.ID)
 	}
 	acct := as.Account
+	if proto == protocol.ProtoTCP || proto == protocol.ProtoTLS {
+		if ok, err := s.passthroughAllowed(ctx, acct.UserID); err != nil {
+			return nil, "", err
+		} else if !ok {
+			return nil, "", bindError(errPassthroughOff)
+		}
+	}
 	meter, err := s.meterFor(ctx, acct.UserID)
 	if err != nil {
 		return nil, "", err

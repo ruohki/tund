@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Globe, ShieldCheck, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
+import { CUSTOM_DOMAINS_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
 import { serverAddresses } from "@/lib/servers";
 import { db } from "@/lib/db";
@@ -56,11 +56,14 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
     domainUsage(user, "subdomain", { teamId: team.id }),
     domainUsage(user, "custom", { teamId: team.id }),
   ]);
-  const [tcp, tcpPorts, customOn] = await Promise.all([
+  const [tcpRange, tcpPorts, customOn, passthroughOn] = await Promise.all([
     tcpConfig(),
     listTcpReservations(user.id, { teamId: team.id }),
     customDomainsEnabled(user),
+    passthroughEnabled(user),
   ]);
+  // Static TCP ports only for accounts that may open TCP tunnels.
+  const tcp = passthroughOn ? tcpRange : null;
 
   const members: MemberItem[] = memberRows.map((r) => ({
     id: r.id,

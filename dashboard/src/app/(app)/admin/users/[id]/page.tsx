@@ -8,7 +8,7 @@ import { formatBytes, formatDateTime, formatKbps, formatNumber, formatTransfer, 
 import { effectiveLimits, monthUsage } from "@/lib/usage";
 import { getSettings } from "@/lib/settings";
 import { LimitsForm } from "./limits-form";
-import { CustomDomainsForm } from "./custom-domains-form";
+import { FeatureForm } from "./feature-form";
 import { identitiesOf } from "@/lib/oauth";
 import { smtpConfigured } from "@/lib/mail";
 import { listTunnels } from "@/lib/metrics";
@@ -198,6 +198,16 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
       </Panel>
 
       <Panel title="Tunnels" description={`${online.length} online`} className="mb-6">
+        <div className="border-b border-line p-4">
+          <p className="mb-2 text-[13.5px] font-medium text-ink">TCP and TLS tunnels</p>
+          <FeatureForm
+            id={u.id}
+            feature="passthrough"
+            label="TCP and TLS tunnels"
+            value={u.passthrough ?? null}
+            inheritLabel={u.is_admin ? "on for admins" : settings.passthrough ? "on" : "off"}
+          />
+        </div>
         {online.length || recent.length ? (
           <ul className="divide-y divide-line">
             {[...online, ...recent].map((t) => (
@@ -225,8 +235,10 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
       <Panel title="Static hostnames and custom domains">
         <div className="border-b border-line p-4">
           <p className="mb-2 text-[13.5px] font-medium text-ink">Custom domains</p>
-          <CustomDomainsForm
+          <FeatureForm
             id={u.id}
+            feature="custom_domains"
+            label="Custom domains"
             value={u.custom_domains ?? null}
             inheritLabel={u.is_admin ? "on for admins" : settings.custom_domains ? "on" : "off"}
           />

@@ -98,7 +98,7 @@ const exampleBox = "rounded-md border border-line bg-surface-2 px-3 py-2 font-mo
 export async function Landing() {
   const cfg = publicConfig();
   const site = await siteInfo();
-  const { browser_warning: browserWarning, custom_domains: customDomains } = await getSettings();
+  const { browser_warning: browserWarning, custom_domains: customDomains, passthrough } = await getSettings();
   const url = `${cfg.scheme}://brave-otter-4821.${cfg.baseDomain}${cfg.portSuffix}`;
   const host = url.replace(/^https?:\/\//, "");
 
@@ -117,7 +117,7 @@ export async function Landing() {
       "Request inspector with replay",
       "Password and single sign-on protection",
       ...(customDomains ? ["Custom domains"] : []),
-      "TCP and TLS tunnels",
+      ...(passthrough ? ["TCP and TLS tunnels"] : []),
     ],
   };
   return (

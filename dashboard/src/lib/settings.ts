@@ -35,6 +35,7 @@ export type Settings = {
   limit_tunnels: number;
   limit_pinned: number;
   custom_domains: boolean;
+  passthrough: boolean;
   limit_domains: number;
   limit_teams: number;
   limit_bandwidth_kbps: number;
@@ -163,6 +164,15 @@ export const SETTING_DEFS: SettingDef[] = [
     kind: "bool",
     env: "TUND_CUSTOM_DOMAINS",
     fallback: () => envBool("TUND_CUSTOM_DOMAINS", false),
+  },
+  {
+    key: "passthrough",
+    group: "Limits",
+    label: "TCP and TLS tunnels",
+    help: "Let accounts open raw TCP tunnels and TLS passthrough tunnels. Off: only admins and accounts you turn it on for under Users can open them. Turning it off disconnects such tunnels of accounts without it.",
+    kind: "bool",
+    env: "TUND_PASSTHROUGH",
+    fallback: () => envBool("TUND_PASSTHROUGH", false),
   },
   {
     key: "limit_domains",

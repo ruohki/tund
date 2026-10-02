@@ -4,9 +4,11 @@ import "context"
 
 // Custom domains need the feature on the account using them: the per-user
 // override (users.custom_domains) when set, otherwise the instance setting,
-// which admins don't need.
+// which admins don't need. TCP and TLS tunnels work the same way (passthrough.go).
 
-func customDomainsEnabled(global, isAdmin bool, override *bool) bool {
+// featureEnabled decides a per-account feature: the override wins, otherwise
+// the instance setting, which admins don't need.
+func featureEnabled(global, isAdmin bool, override *bool) bool {
 	if override != nil {
 		return *override
 	}
@@ -18,7 +20,7 @@ func (s *Server) customDomainsAllowed(ctx context.Context, userID string) (bool,
 	if err != nil {
 		return false, err
 	}
-	return customDomainsEnabled(s.rt().CustomDomains, l.IsAdmin, l.CustomDomains), nil
+	return featureEnabled(s.rt().CustomDomains, l.IsAdmin, l.CustomDomains), nil
 }
 
 // recheckCustomDomains ends the custom-domain tunnels of accounts that may no

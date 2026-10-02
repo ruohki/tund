@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Globe, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
+import { CUSTOM_DOMAINS_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
 import { serverAddresses } from "@/lib/servers";
 import { loadDomainItems, myTeamDomains } from "@/lib/domain-items";
@@ -29,7 +29,7 @@ function Usage({ used, limit, noun, label }: { used: number; limit: number | nul
 export default async function DomainsPage() {
   const user = await requireUser();
   const cfg = { ...publicConfig(), serverIps: await serverAddresses() };
-  const [items, providers, pinned, custom, teamDomains, tcp, tcpPorts, customOn] = await Promise.all([
+  const [items, providers, pinned, custom, teamDomains, tcpRange, tcpPorts, customOn, passthroughOn] = await Promise.all([
     loadDomainItems(user.id, null),
     providerOptions(user.id, null),
     domainUsage(user, "subdomain"),
@@ -38,7 +38,10 @@ export default async function DomainsPage() {
     tcpConfig(),
     listTcpReservations(user.id, { teamId: null }),
     customDomainsEnabled(user),
+    passthroughEnabled(user),
   ]);
+  // Static TCP ports only for accounts that may open TCP tunnels.
+  const tcp = passthroughOn ? tcpRange : null;
   const statics = items.filter((i) => i.kind === "subdomain");
   const customs = items.filter((i) => i.kind === "custom");
   const provs = providers.map((p) => ({ id: p.id, name: p.name, slug: p.slug, ref: p.ref }));

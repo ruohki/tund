@@ -317,6 +317,7 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 | `signup_mode` | `"open"` \| `"invite"` \| `"closed"` | `TUND_ALLOW_SIGNUP` true → open, else closed | dashboard (invite = only with a valid team invite link; the very first account is always allowed) |
 | `require_email_verification` | bool | false | dashboard (new accounts must click the emailed link before approving CLI logins / creating tokens) + server (tokens of unverified accounts get `403 {"error":"verify your email address first …"}`); only effective while SMTP is configured |
 | `custom_domains` | bool | `TUND_CUSTOM_DOMAINS` (false) | server (binding a hostname outside the base domain) + dashboard (adding custom domains, UI copy): whether accounts may use custom domains. `users.custom_domains` (migration 0013; NULL = this setting, where admins count as on; true/false) overrides it per account. The server re-checks live custom-domain tunnels on `settings` and `user_updated` and ends them with `custom domains are not enabled for your account …`. `untrusted_custom_domains` still applies on top for non-trusted accounts |
+| `passthrough` | bool | `TUND_PASSTHROUGH` (false) | server (binding `tcp` and `tls` tunnels) + dashboard (reserving static TCP ports, UI copy): whether accounts may open TCP and TLS passthrough tunnels. `users.passthrough` (migration 0016; NULL = this setting, where admins count as on; true/false) overrides it per account. The server refuses such binds before allocating anything (bind_error `TCP and TLS tunnels are not enabled for your account …`), re-checks live TCP/TLS tunnels on `settings` and `user_updated` and ends them with the same reason. `untrusted_tcp` / `untrusted_tls` still apply on top for non-trusted accounts |
 | `limit_tunnels`, `limit_pinned`, `limit_domains`, `limit_teams` | int (0 = unlimited) | `TUND_MAX_TUNNELS_PER_USER`, `…_PINNED_…`, `…_DOMAINS_…`, `…_TEAMS_…` | server (tunnels, pinned) + dashboard (pinned, domains, teams) |
 | `auto_pin` | bool | `TUND_AUTO_PIN` | server |
 | `browser_warning` | bool | `TUND_BROWSER_WARNING` | server + dashboard badges |
@@ -340,7 +341,7 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 
 ### Audit log
 
-Every admin action and security-relevant account event is appended to `audit_log` by the dashboard: `settings.update` (details = changed keys, never secrets), `smtp.test`, `user.create|delete|disable|enable|admin|unadmin|trust|untrust|verify|reset_password`, `tunnel.stop` (admin), `team.delete` (admin), `domain.delete` (admin), `auth.password_reset` (by the user). Admins see it paginated and filterable under `/admin/audit`.
+Every admin action and security-relevant account event is appended to `audit_log` by the dashboard: `settings.update` (details = changed keys, never secrets), `smtp.test`, `user.create|delete|disable|enable|admin|unadmin|trust|untrust|verify|reset_password|custom_domains|passthrough`, `tunnel.stop` (admin), `team.delete` (admin), `domain.delete` (admin), `auth.password_reset` (by the user). Admins see it paginated and filterable under `/admin/audit`.
 
 ### Internal API additions (tund-server)
 
@@ -360,6 +361,7 @@ Every admin action and security-relevant account event is appended to `audit_log
 * Server env `TUND_TCP_PORTS` (e.g. `20000-20999`; empty = TCP tunnels disabled → bind_error "TCP tunnels are not enabled on this server") and `TUND_TCP_HOST` (hostname shown in URLs, default the dashboard host). The edge listens on the chosen port per tunnel (host networking; see deployment).
 * Port choice: `remote_port` without `auto` → exactly that port (must be in range, not online, not reserved by someone else); with `auto` → preferred if available; otherwise a random free port. `pin: true` → reserve it (`tcp_reservations`, personal). Reserved ports of the account are used like static hostnames: a TCP bind without an explicit port prefers the account's **first reserved port that is not online** before falling back to auto/random. Team-owned reservations (team_id) are usable by all members.
 * Static addresses limit: pinned TCP ports and static hostnames together count toward `limit_pinned` ("static addresses").
+* TCP and TLS tunnels need the `passthrough` feature on the account (setting, default off, plus the per-account override; see Settings). Without it the bind fails before a port or hostname is allocated, and the dashboard doesn't offer static TCP ports.
 * `bound.url = "tcp://<TUND_TCP_HOST>:<port>"`, `bound.remote_port = <port>`, `bound.static` = reserved by the account/team.
 
 ### TLS passthrough

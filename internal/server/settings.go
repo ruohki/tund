@@ -24,6 +24,7 @@ type Runtime struct {
 	BandwidthKbps            int    // per account and direction
 	TransferGB               int    // per account and month
 	CustomDomains            bool   // users.custom_domains overrides it
+	Passthrough              bool   // TCP and TLS tunnels; users.passthrough overrides it
 	InstanceName             string // Admin → Settings → Branding; shown on the edge's pages
 
 	// Abuse protection
@@ -56,6 +57,7 @@ func defaultRuntime(c *Config) *Runtime {
 		BandwidthKbps:     c.BandwidthKbps,
 		TransferGB:        c.TransferGB,
 		CustomDomains:     c.CustomDomains,
+		Passthrough:       c.Passthrough,
 		InstanceName:      defaultInstanceName,
 
 		UntrustedCustomDomains: c.UntrustedCustomDomains,
@@ -96,6 +98,8 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			}
 		case "custom_domains":
 			ok = json.Unmarshal(raw, &r.CustomDomains) == nil
+		case "passthrough":
+			ok = json.Unmarshal(raw, &r.Passthrough) == nil
 		case "untrusted_custom_domains":
 			var b bool
 			var str string

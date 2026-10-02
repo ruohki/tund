@@ -316,19 +316,25 @@ export async function setUserLimitsAction(_: FormState, fd: FormData): Promise<F
   return { ok: "Limits saved. They apply to live tunnels right away." };
 }
 
-// --- custom domains override -----------------------------------------------------
+// --- per-account features ----------------------------------------------------------
 
-/** Per-user custom domains: the instance setting (NULL), on or off. Turning it off disconnects custom-domain tunnels. */
-export async function setUserCustomDomainsAction(_: FormState, fd: FormData): Promise<FormState> {
+/**
+ * Per-user feature override: custom domains or TCP and TLS tunnels. NULL follows
+ * the instance setting. Turning one off disconnects the account's affected tunnels.
+ */
+export async function setUserFeatureAction(_: FormState, fd: FormData): Promise<FormState> {
   const admin = await requireAdmin();
   const u = await targetUser(str(fd, "id"));
   if (!u) return { error: "Unknown user." };
-  const mode = str(fd, "custom_domains");
+  const mode = str(fd, "mode");
   if (mode !== "inherit" && mode !== "on" && mode !== "off") return { error: "Choose default, on or off." };
   const value = mode === "inherit" ? null : mode === "on";
-  await db()`update users set custom_domains = ${value} where id = ${u.id}`;
+  const feature = str(fd, "feature");
+  if (feature === "custom_domains") await db()`update users set custom_domains = ${value} where id = ${u.id}`;
+  else if (feature === "passthrough") await db()`update users set passthrough = ${value} where id = ${u.id}`;
+  else return { error: "Unknown feature." };
   await notify("tund_config", { kind: "user_updated", id: u.id });
-  await audit(actorOf(admin), "user.custom_domains", u.email, { custom_domains: value });
+  await audit(actorOf(admin), `user.${feature}`, u.email, { [feature]: value });
   refresh();
   return { ok: "Saved. It applies to live tunnels right away." };
 }

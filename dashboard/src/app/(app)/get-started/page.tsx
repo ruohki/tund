@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { customDomainsEnabled } from "@/lib/abuse";
+import { PASSTHROUGH_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
 import { defaultStaticHostname } from "@/lib/static-hostnames";
 import { config, publicConfig } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
@@ -28,11 +28,12 @@ export default async function GetStartedPage() {
   const user = await requireUser();
   const cfg = publicConfig();
   const { name: brand } = await siteInfo();
-  const [defaultHost, tcp, verifyRequired, customDomains] = await Promise.all([
+  const [defaultHost, tcp, verifyRequired, customDomains, passthrough] = await Promise.all([
     defaultStaticHostname(user.id),
     tcpConfig(),
     verificationRequired(),
     customDomainsEnabled(user),
+    passthroughEnabled(user),
   ]);
   const mustVerify = !user.emailVerified && verifyRequired;
   const staticUrl = defaultHost ? config().publicUrl(defaultHost) : null;
@@ -134,7 +135,9 @@ export default async function GetStartedPage() {
           description="For SSH, databases, game servers and anything else that isn't HTTP."
           bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
         >
-          {tcp ? (
+          {!passthrough ? (
+            <p>{PASSTHROUGH_OFF}</p>
+          ) : tcp ? (
             <>
               <p>Expose a local port on a public TCP port of {tcp.host}:</p>
               <Command>tund tcp 22</Command>
@@ -162,22 +165,28 @@ export default async function GetStartedPage() {
           description="The edge routes by hostname and never decrypts the traffic."
           bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
         >
-          <p>Forward TLS connections to a local service that has its own certificate:</p>
-          <Command>{customDomains ? "tund tls 8443 --domain secure.example.com" : "tund tls 8443 --subdomain secure"}</Command>
-          <p>
-            Visitors see your service&apos;s certificate
-            {customDomains ? ", so this fits best on a verified custom domain with a certificate you own" : null}. On a{" "}
-            {cfg.baseDomain} hostname, let the client terminate TLS instead:
-          </p>
-          <Command>tund tls 8080 --terminate-cert cert.pem --terminate-key key.pem</Command>
-          <p>
-            The client decrypts with that certificate and forwards plain traffic to your local port. Hostname flags work as
-            for HTTP (<code className="font-mono text-[12.5px] text-ink">--subdomain</code>,{" "}
-            <code className="font-mono text-[12.5px] text-ink">--pin</code>,{" "}
-            <code className="font-mono text-[12.5px] text-ink">--random</code>), and{" "}
-            <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> limits who can connect. Connections show
-            up under Inspect.
-          </p>
+          {passthrough ? (
+            <>
+              <p>Forward TLS connections to a local service that has its own certificate:</p>
+              <Command>{customDomains ? "tund tls 8443 --domain secure.example.com" : "tund tls 8443 --subdomain secure"}</Command>
+              <p>
+                Visitors see your service&apos;s certificate
+                {customDomains ? ", so this fits best on a verified custom domain with a certificate you own" : null}. On a{" "}
+                {cfg.baseDomain} hostname, let the client terminate TLS instead:
+              </p>
+              <Command>tund tls 8080 --terminate-cert cert.pem --terminate-key key.pem</Command>
+              <p>
+                The client decrypts with that certificate and forwards plain traffic to your local port. Hostname flags work as
+                for HTTP (<code className="font-mono text-[12.5px] text-ink">--subdomain</code>,{" "}
+                <code className="font-mono text-[12.5px] text-ink">--pin</code>,{" "}
+                <code className="font-mono text-[12.5px] text-ink">--random</code>), and{" "}
+                <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> limits who can connect. Connections show
+                up under Inspect.
+              </p>
+            </>
+          ) : (
+            <p>{PASSTHROUGH_OFF}</p>
+          )}
         </Panel>
       </div>
 
