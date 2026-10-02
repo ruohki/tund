@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { config } from "@/lib/config";
 import { db } from "@/lib/db";
 import { checkRouting, checkTxt, challengeName, type RoutingStatus } from "@/lib/dnscheck";
+import { serverAddresses } from "@/lib/servers";
 import { hashPassword } from "@/lib/password";
 import { isUuid } from "@/lib/requests";
 import { checkCustomHostname, parseAllowList } from "@/lib/validate";
@@ -167,9 +168,10 @@ export async function verifyDomainAction(id: string): Promise<VerifyResult> {
     return { verified: false, message: typeof found === "string" ? found : "Unknown domain.", routing: { state: "missing" }, txtValues: [] };
   }
   const { d, owner } = found;
+  const c = config();
   const [txt, routing] = await Promise.all([
     checkTxt(d.hostname, d.verification_token),
-    checkRouting(d.hostname, config().serverIp),
+    serverAddresses().then((addresses) => checkRouting(d.hostname, { addresses, hosts: [c.dashboardHost, c.baseDomain] })),
   ]);
   if (txt.found) {
     if (!d.verified_at) {

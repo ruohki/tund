@@ -4,6 +4,7 @@ import { Globe, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
+import { serverAddresses } from "@/lib/servers";
 import { loadDomainItems, myTeamDomains } from "@/lib/domain-items";
 import { domainUsage } from "@/lib/static-hostnames";
 import { providerOptions } from "@/lib/teams";
@@ -27,7 +28,7 @@ function Usage({ used, limit, noun, label }: { used: number; limit: number | nul
 
 export default async function DomainsPage() {
   const user = await requireUser();
-  const cfg = publicConfig();
+  const cfg = { ...publicConfig(), serverIps: await serverAddresses() };
   const [items, providers, pinned, custom, teamDomains, tcp, tcpPorts, customOn] = await Promise.all([
     loadDomainItems(user.id, null),
     providerOptions(user.id, null),

@@ -121,6 +121,19 @@ export function AddCustomDomainForm({ full, teamId }: { full: string | null; tea
 }
 
 function RoutingLine({ result }: { result: VerifyResult["routing"] }) {
+  if (result.state === "ok" && result.via === "cname")
+    return (
+      <p className="flex items-center gap-1.5 text-[12.5px] text-ok">
+        <CheckCircle2 size={14} /> Points here through a CNAME, so it reaches every server of this instance.
+      </p>
+    );
+  if (result.state === "ok" && result.missing.length)
+    return (
+      <p className="flex items-center gap-1.5 text-[12.5px] text-ink-2">
+        <CircleAlert size={14} /> Points at {result.addresses.join(", ")}, but not at {result.missing.join(", ")}. Tunnels work, but
+        only those servers serve this domain; use the CNAME, or add the missing addresses.
+      </p>
+    );
   if (result.state === "ok")
     return (
       <p className="flex items-center gap-1.5 text-[12.5px] text-ok">
@@ -130,13 +143,16 @@ function RoutingLine({ result }: { result: VerifyResult["routing"] }) {
   if (result.state === "elsewhere")
     return (
       <p className="flex items-center gap-1.5 text-[12.5px] text-danger">
-        <CircleAlert size={14} /> Resolves to {result.addresses.join(", ")}, not this server. Tunnels won&apos;t be reachable yet.
+        <CircleAlert size={14} />
+        {result.foreign.length === result.addresses.length
+          ? ` Resolves to ${result.addresses.join(", ")}, not this server. Tunnels won't be reachable yet.`
+          : ` Also resolves to ${result.foreign.join(", ")}, which isn't this server. Visitors sent there won't reach your tunnels.`}
       </p>
     );
   if (result.state === "missing")
     return (
       <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
-        <CircleDashed size={14} /> No A/AAAA record found yet.
+        <CircleDashed size={14} /> No A/AAAA or CNAME record found yet.
       </p>
     );
   return <p className="text-[12.5px] text-muted">Routing check skipped: {result.reason}</p>;
@@ -153,15 +169,21 @@ function DnsRecords({ domain, cfg }: { domain: DomainItem; cfg: PublicConfig }) 
       note: "Proves the domain is yours.",
     },
   ];
-  if (cfg.serverIp) {
-    rows.push({ type: "A", name: recordName, value: cfg.serverIp, note: "Routes traffic to this server." });
-  }
+  const ips = cfg.serverIps ?? (cfg.serverIp ? [cfg.serverIp] : []);
   rows.push({
     type: "CNAME",
     name: recordName,
     value: cfg.dashboardHost,
-    note: cfg.serverIp ? "Alternative to the A record (not possible on a zone apex)." : "Routes traffic to this server.",
+    note: ips.length > 1 ? "Recommended: reaches every server of this instance." : "Recommended: routes traffic to this server.",
   });
+  for (const ip of ips) {
+    rows.push({
+      type: ip.includes(":") ? "AAAA" : "A",
+      name: recordName,
+      value: ip,
+      note: ips.length > 1 ? "Instead of the CNAME where none is allowed (zone apex): add all of these." : "Instead of the CNAME where none is allowed (zone apex).",
+    });
+  }
   return (
     <div className="overflow-x-auto scroll-thin rounded-md border border-line">
       <table className="w-full min-w-[640px] text-[12.5px]">
@@ -175,7 +197,7 @@ function DnsRecords({ domain, cfg }: { domain: DomainItem; cfg: PublicConfig }) 
         </thead>
         <tbody className="divide-y divide-line">
           {rows.map((r) => (
-            <tr key={r.type}>
+            <tr key={`${r.type}-${r.value}`}>
               <td className="px-3 py-1.5 font-mono font-medium text-ink">{r.type}</td>
               <td className="px-3 py-1.5">
                 <span className="inline-flex items-center gap-1 font-mono text-ink">
@@ -419,8 +441,8 @@ export function DomainRow({
           <p className="text-[13px] text-ink-2">
             Create these records at your DNS provider.{" "}
             {domain.hostname.startsWith("*.")
-              ? "The wildcard records route every name under the domain to this server."
-              : "Use either the A or the CNAME record."}
+              ? "The wildcard record routes every name under the domain to this server."
+              : "Use the CNAME record; only where your DNS doesn't allow one (on the zone apex), use the address records instead."}
           </p>
           <DnsRecords domain={domain} cfg={cfg} />
           <div className="flex flex-wrap items-center gap-3">

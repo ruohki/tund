@@ -4,6 +4,7 @@ import { Globe, ShieldCheck, Waypoints } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { CUSTOM_DOMAINS_OFF, customDomainsEnabled } from "@/lib/abuse";
 import { publicConfig } from "@/lib/config";
+import { serverAddresses } from "@/lib/servers";
 import { db } from "@/lib/db";
 import { loadDomainItems } from "@/lib/domain-items";
 import { listTcpReservations, tcpConfig } from "@/lib/tcp";
@@ -33,7 +34,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   if (!m) notFound();
   const { team, role } = m;
   const manage = atLeast(role, "admin");
-  const cfg = publicConfig();
+  const cfg = { ...publicConfig(), serverIps: await serverAddresses() };
 
   const [memberRows, inviteRows, providerRows, domains, options, pinned, custom] = await Promise.all([
     db()`

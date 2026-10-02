@@ -32,6 +32,8 @@ export type PublicConfig = {
   scheme: string;
   portSuffix: string;
   serverIp: string;
+  /** Every public address of this instance (lib/servers.ts); set by pages that show DNS instructions. */
+  serverIps?: string[];
 };
 
 /** The subset that is safe to hand to client components. */

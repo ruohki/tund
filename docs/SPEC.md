@@ -123,7 +123,7 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 
 ## Dashboard environment
 
-`TUND_DATABASE_URL`, `TUND_BASE_DOMAIN`, `TUND_DASHBOARD_HOST`, `TUND_PUBLIC_SCHEME`, `TUND_PUBLIC_PORT`, `TUND_INTERNAL_URL` (`http://server:4040`), `TUND_INTERNAL_SECRET`, `TUND_SERVER_IP` (shown in DNS instructions), `TUND_ALLOW_SIGNUP` (`false`; the first account is always allowed and becomes admin).
+`TUND_DATABASE_URL`, `TUND_BASE_DOMAIN`, `TUND_DASHBOARD_HOST`, `TUND_PUBLIC_SCHEME`, `TUND_PUBLIC_PORT`, `TUND_INTERNAL_URL` (`http://server:4040`), `TUND_INTERNAL_SECRET`, `TUND_SERVER_IP` (shown in custom-domain DNS instructions next to the public addresses the cluster nodes report; the instructions recommend a CNAME to the dashboard host, and the routing check accepts a CNAME to it or addresses of any node), `TUND_ALLOW_SIGNUP` (`false`; the first account is always allowed and becomes admin).
 
 ## Hosted service mode (migration 0002)
 
