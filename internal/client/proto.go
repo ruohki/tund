@@ -90,6 +90,12 @@ func (s TunnelSpec) Validate() error {
 	if (s.TerminateCert == "") != (s.TerminateKey == "") {
 		return errors.New("TLS termination needs both a certificate and a key")
 	}
+	if s.Pool && s.Random {
+		return errors.New("a load-balanced tunnel (pool) needs a fixed hostname, not a random one")
+	}
+	if s.Pool && s.proto() != protocol.ProtoHTTP {
+		return errors.New("load balancing (pool) only applies to http tunnels")
+	}
 	if s.RemotePort < 0 || s.RemotePort > 65535 {
 		return fmt.Errorf("invalid remote port %d", s.RemotePort)
 	}

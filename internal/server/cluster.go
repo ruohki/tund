@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -52,7 +53,7 @@ type nodeInfo struct {
 func (n nodeInfo) alive() bool { return time.Since(n.LastSeen) < nodeDeadAfter }
 
 type owner struct {
-	node    string
+	nodes   []string // several for a load-balanced pool spread over nodes
 	proto   string
 	expires time.Time
 }
@@ -194,20 +195,29 @@ func (c *cluster) ownerOf(ctx context.Context, key string) (nodeInfo, string, bo
 	o, ok := c.owners[key]
 	c.mu.Unlock()
 	if !ok || time.Now().After(o.expires) {
-		node, proto, err := c.s.store.TunnelNode(ctx, key)
+		nodes, proto, err := c.s.store.TunnelNodes(ctx, key)
 		if err != nil && !errors.Is(err, errNotFound) {
 			logf("owner of %s: %v", key, err)
 		}
-		o = owner{node: node, proto: proto, expires: time.Now().Add(ownerCacheTTL)}
+		o = owner{nodes: nodes, proto: proto, expires: time.Now().Add(ownerCacheTTL)}
 		c.mu.Lock()
 		c.owners[key] = o
 		c.mu.Unlock()
 	}
-	if o.node == "" || o.node == c.name {
+	// A pool on several nodes: any live one of them, at random.
+	var live []nodeInfo
+	for _, name := range o.nodes {
+		if name == c.name {
+			continue
+		}
+		if n, alive := c.node(name); alive {
+			live = append(live, n)
+		}
+	}
+	if len(live) == 0 {
 		return nodeInfo{}, "", false
 	}
-	n, alive := c.node(o.node)
-	return n, o.proto, alive
+	return live[mrand.IntN(len(live))], o.proto, true
 }
 
 // onTunnelEvent invalidates the owner cache and tracks remote TCP tunnels.

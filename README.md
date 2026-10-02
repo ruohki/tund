@@ -137,6 +137,16 @@ tunnels:
       set: {X-Frame-Options: DENY}
 ```
 
+## Load-balanced tunnels
+
+Run the same tunnel on several machines (or containers) and the server spreads requests across them:
+
+```sh
+tund http 3000 --subdomain api --pool      # on every machine; all of them serve https://api.<base>
+```
+
+All members must use `--pool` and the same visitor-facing options (password/OIDC, IP allow list, traffic rules); each one can point at its own local address. A member that disconnects simply drops out. With edge nodes, visitors are served by the members on the node they reach.
+
 ## TCP and TLS tunnels
 
 ```sh

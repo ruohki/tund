@@ -105,6 +105,8 @@ export type TunnelRow = {
   teamSlug: string | null;
   /** Started by the viewer (only then can it be stopped or pinned from the dashboard). */
   mine: boolean;
+  /** A member of a load-balanced pool sharing the hostname (docs/SPEC.md "Load-balanced tunnels"). */
+  pooled: boolean;
   ownerEmail: string;
   client: { hostname: string; os: string; version: string; remoteAddr: string };
 };
@@ -141,7 +143,7 @@ export async function listTunnels(
               where r.port = t.remote_port and r.user_id = t.user_id and r.team_id is null))) as pinned,
       t.proto, t.remote_port,
       ${teamSlugFor(sql, "t.hostname")} as team_slug,
-      (t.user_id = ${userId}) as mine, u.email as owner_email
+      (t.user_id = ${userId}) as mine, t.pool_key <> '' as pooled, u.email as owner_email
     from tunnels t join agent_sessions a on a.id = t.agent_session_id join users u on u.id = t.user_id
     where ${opts.includeTeams ? sql`(t.user_id = ${userId} or ${teamHostnameMatch(sql, "t.hostname", userId)})` : sql`t.user_id = ${userId}`}
       ${opts.online === true ? sql`and t.ended_at is null` : opts.online === false ? sql`and t.ended_at is not null` : sql``}
@@ -163,6 +165,7 @@ export async function listTunnels(
     pinned: Boolean(r.pinned),
     teamSlug: (r.team_slug as string) ?? null,
     mine: Boolean(r.mine),
+    pooled: Boolean(r.pooled),
     ownerEmail: r.owner_email as string,
     client: { hostname: r.client_hostname, os: r.client_os, version: r.client_version, remoteAddr: r.remote_addr },
   }));

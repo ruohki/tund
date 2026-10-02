@@ -47,6 +47,17 @@ function TeamBadge({ slug }: { slug: string }) {
   );
 }
 
+function PoolBadge({ size }: { size: number }) {
+  return (
+    <Badge
+      tone="outline"
+      title={`Load-balanced: ${size === 1 ? "the only tunnel" : `one of ${size} tunnels`} sharing this hostname; requests are spread across them. Start more with --pool.`}
+    >
+      {size > 1 ? `Pool of ${size}` : "Pool"}
+    </Badge>
+  );
+}
+
 function StaticBadge() {
   return (
     <Badge tone="outline" title="One of your static hostnames">
@@ -68,6 +79,7 @@ export default async function TunnelsPage({ searchParams }: PageProps<"/tunnels"
   const closesIn = (t: { mine: boolean; startedAt: string }) =>
     t.mine && limits.lifetimeMinutes ? timeLeft(t.startedAt, limits.lifetimeMinutes) : null;
   const myOnline = online.filter((t) => t.mine).length;
+  const poolSize = (hostname: string) => online.filter((t) => t.pooled && t.hostname === hostname).length;
   const cfg = config();
   const settings = await getSettings();
   const maxTunnels = settings.limit_tunnels > 0 && !user.isAdmin ? settings.limit_tunnels : null;
@@ -113,6 +125,7 @@ export default async function TunnelsPage({ searchParams }: PageProps<"/tunnels"
                     <ProtoBadge proto={t.proto} />
                     {t.proto === "http" ? <AuthBadge mode={t.authMode} /> : null}
                     {t.pinned ? <StaticBadge /> : null}
+                    {t.pooled ? <PoolBadge size={poolSize(t.hostname)} /> : null}
                     {t.teamSlug ? <TeamBadge slug={t.teamSlug} /> : null}
                     {showsWarning(t) ? <WarningBadge /> : null}
                     {!t.mine ? <span className="truncate text-[12px] text-muted">by {t.ownerEmail}</span> : null}

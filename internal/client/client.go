@@ -45,6 +45,9 @@ type TunnelSpec struct {
 	RestartOnExpiry bool
 	// Rules are traffic rules applied by the server (http only, see BuildRules).
 	Rules *protocol.Rules
+	// Pool shares the hostname with the account's other tunnels started
+	// with Pool and the same settings; visitors are spread across them.
+	Pool bool
 }
 
 // Options configure a Client.
@@ -139,6 +142,7 @@ type tunnel struct {
 	err      string
 	retries  int
 	expires  time.Time // the server closes the tunnel then (maximum lifetime)
+	poolSize int       // tunnels sharing the hostname when bound
 	// restarting: bound again after reaching the maximum lifetime; bind
 	// errors are retried while the server lets go of the old tunnel.
 	restarting bool
@@ -397,9 +401,9 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 		return false, fmt.Errorf("unexpected %q message from server", m.Type)
 	}
 
-	if c.usesRules() && protocol.NewerVersion(featureServerVersion, m.ServerVersion) {
-		return false, &fatalError{fmt.Errorf("%s runs tund %s, which does not support traffic rules (headers, CORS, rate limit, routes); they need %s or newer on the server",
-			c.opts.Server, m.ServerVersion, featureServerVersion)}
+	if feature := c.newFeature(); feature != "" && protocol.NewerVersion(featureServerVersion, m.ServerVersion) {
+		return false, &fatalError{fmt.Errorf("%s runs tund %s, which does not support %s; that needs %s or newer on the server",
+			c.opts.Server, m.ServerVersion, feature, featureServerVersion)}
 	}
 	first := c.sessions == 0
 	c.sessions++
@@ -493,7 +497,7 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				c.mu.Lock()
 				t.status, t.url, t.host, t.authMode, t.err = statusOnline, m.URL, hostOf(m.URL), m.AuthMode, ""
 				t.static, t.warning, t.tunnelID, t.warnPage = m.Static, m.Warning, m.TunnelID, m.BrowserWarning
-				t.expires, t.restarting = time.Time{}, false
+				t.expires, t.restarting, t.poolSize = time.Time{}, false, m.PoolSize
 				if m.ExpiresAt != nil {
 					t.expires = *m.ExpiresAt
 				}
@@ -642,6 +646,7 @@ func (c *Client) sendBind(ctl *protocol.Control, t *tunnel) error {
 		RemotePort: t.spec.RemotePort,
 		AllowIPs:   t.spec.AllowIPs,
 		Rules:      t.spec.Rules,
+		Pool:       t.spec.Pool,
 	}
 	if p := t.spec.proto(); p != protocol.ProtoHTTP {
 		b.Proto = p
@@ -685,13 +690,17 @@ func (c *Client) shutdown(ctl *protocol.Control) {
 	}
 }
 
-func (c *Client) usesRules() bool {
+// newFeature names a feature in use that older servers would silently ignore.
+func (c *Client) newFeature() string {
 	for _, t := range c.tunnels {
-		if t.spec.Rules != nil {
-			return true
+		switch {
+		case t.spec.Rules != nil:
+			return "traffic rules (headers, CORS, rate limit, routes)"
+		case t.spec.Pool:
+			return "load-balanced tunnels (--pool)"
 		}
 	}
-	return false
+	return ""
 }
 
 func (c *Client) counts() (online, pending, failed, closed int) {
@@ -721,6 +730,8 @@ type tunnelView struct {
 	ExpiresAt                                                       time.Time // zero = no maximum lifetime
 	RestartOnExpiry                                                 bool
 	Rules                                                           *protocol.Rules
+	Pool                                                            bool
+	PoolSize                                                        int
 }
 
 func (c *Client) view(t *tunnel) tunnelView {
@@ -730,6 +741,7 @@ func (c *Client) view(t *tunnel) tunnelView {
 		Proto: t.spec.proto(), RemotePort: t.remote, Terminated: t.termCfg != nil,
 		Online: t.status == statusOnline, Failed: t.status == statusFailed, Closed: t.status == statusClosed,
 		ExpiresAt: t.expires, RestartOnExpiry: t.spec.RestartOnExpiry, Rules: t.spec.Rules,
+		Pool: t.spec.Pool, PoolSize: t.poolSize,
 	}
 }
 

@@ -93,6 +93,8 @@ type Message struct {
 	// ExpiresAt: the server closes the tunnel at this time (maximum tunnel
 	// lifetime). Also set on the notice that announces it.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// PoolSize: tunnels sharing the hostname, this one included (pool binds).
+	PoolSize int `json:"pool_size,omitempty"`
 
 	// request
 	Request *RequestEvent `json:"request,omitempty"`
@@ -137,6 +139,10 @@ type Bind struct {
 	Auth       *Auth  `json:"auth,omitempty"`
 	// Rules are applied by the edge (http only).
 	Rules *Rules `json:"rules,omitempty"`
+	// Pool shares the hostname with the account's other pool tunnels that
+	// have the same access policy, IP allow list and rules; visitors are
+	// spread across them (http only).
+	Pool bool `json:"pool,omitempty"`
 }
 
 // Rules shape the traffic of an HTTP tunnel at the edge.

@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -185,7 +188,7 @@ func (as *AgentSession) bind(ctx context.Context, m protocol.Message) {
 	bound := protocol.Message{
 		Type: protocol.TypeBound, ID: m.ID, TunnelID: t.ID, URL: t.PublicURL,
 		AuthMode: t.Policy().Mode, Static: t.Static, Warning: warning, RemotePort: t.RemotePort,
-		BrowserWarning: t.warn.Load() && t.Policy().Mode == protocol.AuthNone,
+		BrowserWarning: t.warn.Load() && t.Policy().Mode == protocol.AuthNone, PoolSize: t.poolSize,
 	}
 	if !t.expiresAt.IsZero() {
 		bound.ExpiresAt = &t.expiresAt
@@ -240,6 +243,14 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 			return nil, "", err
 		}
 	}
+	if b.Pool {
+		switch {
+		case proto != protocol.ProtoHTTP:
+			return nil, "", bindError("load balancing (--pool) works for HTTP tunnels only")
+		case b.Random:
+			return nil, "", bindError("a load-balanced tunnel (--pool) needs a fixed hostname: your static hostname, --subdomain or --domain, not --random")
+		}
+	}
 	as.mu.Lock()
 	_, dup := as.tunnels[m.ID]
 	as.mu.Unlock()
@@ -279,6 +290,10 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		meter:     meter,
 		session:   as,
 		rules:     rules,
+		pool:      b.Pool,
+	}
+	if b.Pool {
+		t.poolKey = s.poolKey(b, allow, rules)
 	}
 	if t.Name == "" {
 		t.Name = m.ID
@@ -386,6 +401,7 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		SessionID: as.ID, UserID: acct.UserID, Name: t.Name, Hostname: host,
 		PublicURL: t.PublicURL, LocalAddr: t.LocalAddr, AuthMode: pol.Mode,
 		Proto: proto, RemotePort: t.RemotePort, Node: s.cfg.NodeName(),
+		PoolKey: t.poolKey,
 	}
 	t.ID, err = s.store.CreateTunnel(ctx, row)
 	var inUse *errInUse
@@ -395,9 +411,14 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 	if err != nil {
 		s.releaseTunnel(t)
 		if errors.As(err, &inUse) {
-			return nil, "", bindError(host + " is already in use by another tunnel")
+			return nil, "", bindError(inUseMessage(t, inUse.UserID == acct.UserID, inUse.Pooled))
 		}
 		return nil, "", err
+	}
+	if t.pool {
+		if t.poolSize, err = s.store.CountOnline(ctx, host); err != nil {
+			logf("pool size of %s: %v", host, err)
+		}
 	}
 	if proto == protocol.ProtoHTTP {
 		s.setupProxy(t)
@@ -513,8 +534,12 @@ func (s *Server) claimHostname(ctx context.Context, acct Account, b *protocol.Bi
 			// claim (not a plain in-use check) so a reconnecting client takes
 			// its URL back from its own dead session.
 			t.Hostname = d.Hostname
-			if s.claim(t, acct) == nil {
+			err := s.claim(t, acct)
+			if err == nil {
 				return d, nil
+			}
+			if b.Pool {
+				return nil, err // joining the pool is the point; don't move to another hostname
 			}
 		case !errors.Is(err, errNotFound):
 			return nil, err
@@ -558,19 +583,78 @@ func (s *Server) claimHostname(ctx context.Context, acct Account, b *protocol.Bi
 // claim reserves t.Hostname in the registry, taking it over from a dead
 // session of the same account.
 func (s *Server) claim(t *Tunnel, acct Account) error {
+	if t.pool {
+		s.dropReplacedMembers(t)
+	}
 	cur, ok := s.reg.Claim(t)
 	if ok {
+		if t.pool {
+			s.adoptPool(t)
+		}
 		return nil
 	}
 	if cur.UserID != acct.UserID || !cur.session.stale() {
-		return bindError(t.Hostname + " is already in use by another tunnel")
+		return bindError(inUseMessage(t, cur.UserID == acct.UserID, cur.pool))
 	}
 	// Our own client reconnected before the old session timed out.
 	cur.session.close("replaced by a new connection")
 	if _, ok := s.reg.Claim(t); !ok {
-		return bindError(t.Hostname + " is already in use by another tunnel")
+		return bindError(inUseMessage(t, true, cur.pool))
 	}
 	return nil
+}
+
+// inUseMessage explains why t cannot have its hostname.
+func inUseMessage(t *Tunnel, ours, pooled bool) string {
+	switch {
+	case !ours:
+		return t.Hostname + " is already in use by another tunnel"
+	case t.pool && pooled:
+		return t.Hostname + " is load-balanced by your other tunnels with different settings; start this one with the same access policy, IP allow list and traffic rules"
+	case t.pool:
+		return t.Hostname + " is in use by another of your tunnels without --pool; start all of them with --pool to share it"
+	case pooled:
+		return t.Hostname + " is load-balanced by your tunnels started with --pool; add --pool to join them"
+	}
+	return t.Hostname + " is already in use by another tunnel"
+}
+
+// dropReplacedMembers closes pool members that this client replaces: same
+// machine and tunnel name, on a session that no longer answers (the client
+// reconnected before the server noticed). Visitors would hang on them.
+func (s *Server) dropReplacedMembers(t *Tunnel) {
+	for _, m := range s.reg.Members(t.Hostname) {
+		if m.session != t.session && m.UserID == t.UserID && m.Name == t.Name &&
+			m.session.ClientHostname == t.session.ClientHostname && m.session.stale() {
+			m.session.close("replaced by a new connection")
+		}
+	}
+}
+
+// adoptPool shares state with the pool's other members on this node: the
+// rate limiter (one budget per visitor, not one per member).
+func (s *Server) adoptPool(t *Tunnel) {
+	for _, m := range s.reg.Members(t.Hostname) {
+		if m != t && m.poolKey == t.poolKey && m.rules != nil && t.rules != nil {
+			t.rules = m.rules
+			return
+		}
+	}
+}
+
+// poolKey sums up what visitors see of a tunnel; pool members must agree on
+// it. Keyed, because it covers a client-given password and is stored.
+func (s *Server) poolKey(b *protocol.Bind, allow []netip.Prefix, rules *tunnelRules) string {
+	var buf strings.Builder
+	auth, _ := json.Marshal(b.Auth)
+	buf.Write(auth)
+	for _, p := range allow {
+		buf.WriteString("\x00" + p.String())
+	}
+	if rules != nil {
+		buf.WriteString("\x00" + rules.spec)
+	}
+	return hex.EncodeToString(s.signer.mac("tunnel-pool", []byte(buf.String())))[:32]
 }
 
 func (s *Server) freeRandomHost(ctx context.Context) (string, error) {
@@ -750,7 +834,8 @@ func (s *Server) bindPolicy(ctx context.Context, userID string, a *protocol.Auth
 			if err != nil {
 				return Policy{}, false, err
 			}
-			return Policy{Mode: protocol.AuthPassword, PasswordHash: h}, true, nil
+			tag := hex.EncodeToString(s.signer.mac("tunnel-password", []byte(a.Password)))
+			return Policy{Mode: protocol.AuthPassword, PasswordHash: h, PasswordTag: tag}, true, nil
 		case protocol.AuthOIDC:
 			p, err := s.resolveProvider(ctx, userID, a.Provider)
 			if err != nil {

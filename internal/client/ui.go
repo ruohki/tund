@@ -227,6 +227,9 @@ func (d *Display) forwarding(t tunnelView) string {
 	if t.Static {
 		line += "  " + d.c(cyan, "[static]")
 	}
+	if t.Pool {
+		line += "  " + d.c(cyan, "[pool]")
+	}
 	if t.Proto == protocol.ProtoTLS {
 		if t.Terminated {
 			line += "  " + d.c(cyan, "[terminated]")
@@ -248,6 +251,14 @@ func boolKV(b bool) string {
 }
 
 func (d *Display) warningRow(t tunnelView) {
+	if t.Pool {
+		switch {
+		case t.PoolSize > 1:
+			d.println(d.row("", d.c(dim, fmt.Sprintf("load-balanced: %d tunnels share this hostname", t.PoolSize))))
+		case t.Online:
+			d.println(d.row("", d.c(dim, "load-balanced: the first tunnel on this hostname; start more with --pool")))
+		}
+	}
 	if t.Rules != nil {
 		for _, r := range t.Rules.Routes {
 			path := r.Path

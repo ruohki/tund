@@ -100,6 +100,17 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 * Visitor cookie `_tund_auth` (HMAC-signed with `TUND_SECRET`, host-only, 7 days, bound to a fingerprint of the policy so changing it logs everybody out). The edge strips it before forwarding.
 * Paths under `/_tund/` on tunnel hosts belong to the edge.
 
+## Load-balanced tunnels (migration 0019)
+
+`bind.pool: true` (CLI `--pool`, `tund.yml` `pool: true`; HTTP only, not with `random`) lets several tunnels of one account share a hostname. Members must agree on what visitors see: the `pool_key` is a keyed hash (HMAC with `TUND_SECRET`) of the client's `auth`, the IP allow list and the traffic rules; local address and host header may differ. A bind is refused when the hostname is held by a single tunnel, by another account, or by a pool with another key ("… is load-balanced by your other tunnels with different settings"); a single tunnel is refused while a pool holds the hostname ("add --pool to join them").
+
+* Registry: a hostname maps to its members; each request goes to the next member on this node (round robin). Pool members on this node share one rate limiter.
+* Nodes: visitors are served by the members on the node they reach; a node without members relays to a random live node that has some (`tunnels.node` of the online rows).
+* `tunnels.pool_key` (`''` = single tunnel); the online-hostname unique index only covers single tunnels. `CreateTunnel` takes a transaction-scoped advisory lock on the hostname so pool members and single tunnels cannot race in from different nodes; it does not end this node's rows of the same pool.
+* Passwords given by the client get a `PasswordTag` (HMAC of the password) that replaces the salted hash in the policy fingerprint, so visitor cookies are valid on every member and survive restarts.
+* A member joining from the same machine with the same tunnel name replaces members whose session no longer answers (a client that reconnected).
+* `bound.pool_size`: online members on all nodes, this one included. The dashboard marks members "Pool of N".
+
 ## Traffic rules (HTTP tunnels)
 
 `bind.rules` (`protocol.Rules`), applied by the node holding the tunnel; TCP/TLS binds with rules are refused. Clients refuse to send rules to servers older than 0.5.0 (which would ignore them).

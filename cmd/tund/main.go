@@ -129,7 +129,7 @@ func newHTTPCmd(g *globals) *cobra.Command {
 	var (
 		name, subdomain, domain, hostHeader, password, oidc string
 		allow, allowIPs                                     []string
-		pin, random, restart                                bool
+		pin, random, restart, pool                          bool
 		rules                                               client.RuleOptions
 	)
 	cmd := &cobra.Command{
@@ -158,6 +158,7 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
   tund http 3000 --password s3cret                # visitors must enter a password
   tund http 3000 --oidc google --oidc-allow @example.com,bob@gmail.com
   tund http 3000 --oidc acme/okta --oidc-allow group:engineering   # a provider of team "acme"
+  tund http 3000 --subdomain api --pool           # run on several machines: requests are spread across them
   tund http 3000 --route /api=8080                # /api/… goes to localhost:8080, the rest to :3000
   tund http 3000 --cors https://app.example.com   # the server answers CORS preflights
   tund http 3000 --rate-limit 60/m                # at most 60 requests per minute per visitor
@@ -198,6 +199,7 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 
 				RestartOnExpiry: restart,
 				Rules:           r,
+				Pool:            pool,
 			}
 			return runSpec(g, spec)
 		},
@@ -214,6 +216,7 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 	f.StringSliceVar(&allow, "oidc-allow", nil, "who may pass OIDC: emails (a@b.com), domains (@b.com) or groups (group:admins); repeatable or comma separated")
 	addAllowIPFlag(f, &allowIPs)
 	addRestartFlag(f, &restart)
+	f.BoolVar(&pool, "pool", false, "load-balance: share the hostname with your other tunnels started with --pool (same options), visitors are spread across them")
 	f.StringArrayVar(&rules.Routes, "route", nil, "send a path prefix to another local address: /api=8080 (repeatable; the longest prefix wins)")
 	f.StringArrayVar(&rules.RequestSet, "request-header", nil, `set a header on requests to your service: "Name: value" (repeatable)`)
 	f.StringSliceVar(&rules.RequestRemove, "request-header-remove", nil, "remove a header from requests to your service (repeatable)")
@@ -247,6 +250,7 @@ Example config:
       addr: 3000
       subdomain: myapp
       pin: true            # keep myapp as a static hostname
+      pool: true           # share myapp with the same tunnel on other machines
     preview:
       addr: 5173
       random: true         # one-off URL, not your static one

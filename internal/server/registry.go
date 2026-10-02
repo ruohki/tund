@@ -21,14 +21,22 @@ import (
 type Policy struct {
 	Mode         string // protocol.AuthNone / AuthPassword / AuthOIDC
 	PasswordHash string
-	ProviderID   string
-	Allow        []string
+	// PasswordTag identifies a password given by the client (keyed hash):
+	// unlike the salted PasswordHash it is the same on every bind, so visitor
+	// cookies survive restarts and work across the members of a pool.
+	PasswordTag string
+	ProviderID  string
+	Allow       []string
 }
 
 // Fingerprint changes whenever the policy changes, which invalidates visitor cookies.
 func (p Policy) Fingerprint() string {
+	pw := p.PasswordHash
+	if p.PasswordTag != "" {
+		pw = p.PasswordTag
+	}
 	h := sha256.New()
-	h.Write([]byte(p.Mode + "\x00" + p.PasswordHash + "\x00" + p.ProviderID + "\x00" + strings.Join(p.Allow, ",")))
+	h.Write([]byte(p.Mode + "\x00" + pw + "\x00" + p.ProviderID + "\x00" + strings.Join(p.Allow, ",")))
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
@@ -97,6 +105,12 @@ type Tunnel struct {
 	expiresAt    time.Time    // maximum lifetime at bind time; zero = unlimited
 	expiryNoted  atomic.Bool  // the client was told the tunnel closes soon
 	rules        *tunnelRules // http: traffic rules, nil = none
+	// pool: shares the hostname with the account's other pool tunnels whose
+	// poolKey (visitor-facing settings) is the same; visitors are spread
+	// across them.
+	pool     bool
+	poolKey  string
+	poolSize int // members on all nodes when this one was bound
 
 	transport *http.Transport
 	proxy     *httputil.ReverseProxy
@@ -139,20 +153,45 @@ func (t *Tunnel) checkPassword(pw string) bool {
 // Registry holds all live agent sessions and tunnels.
 type Registry struct {
 	mu       sync.RWMutex
-	byHost   map[string]*Tunnel // routable tunnels
-	pending  map[string]*Tunnel // claimed hostnames still being set up
+	byHost   map[string]*hostSlot // routable tunnels
+	pending  map[string][]*Tunnel // claimed hostnames still being set up
 	byID     map[string]*Tunnel
 	sessions map[string]*AgentSession
 }
 
-func NewRegistry() *Registry {
-	return &Registry{byHost: map[string]*Tunnel{}, pending: map[string]*Tunnel{}, byID: map[string]*Tunnel{}, sessions: map[string]*AgentSession{}}
+// hostSlot holds the routable tunnels of a hostname: one, or the members of
+// a load-balanced pool (copy on write, picked round-robin).
+type hostSlot struct {
+	members []*Tunnel
+	next    atomic.Uint64
 }
 
+func NewRegistry() *Registry {
+	return &Registry{byHost: map[string]*hostSlot{}, pending: map[string][]*Tunnel{}, byID: map[string]*Tunnel{}, sessions: map[string]*AgentSession{}}
+}
+
+// Lookup returns the tunnel for host; for a pool, the next member in turn.
 func (r *Registry) Lookup(host string) *Tunnel {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.byHost[host]
+	slot := r.byHost[host]
+	if slot == nil {
+		return nil
+	}
+	if len(slot.members) == 1 {
+		return slot.members[0]
+	}
+	return slot.members[(slot.next.Add(1)-1)%uint64(len(slot.members))]
+}
+
+// Members returns the routable tunnels of host.
+func (r *Registry) Members(host string) []*Tunnel {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if slot := r.byHost[host]; slot != nil {
+		return slot.members
+	}
+	return nil
 }
 
 func (r *Registry) ByID(id string) *Tunnel {
@@ -161,17 +200,27 @@ func (r *Registry) ByID(id string) *Tunnel {
 	return r.byID[id]
 }
 
-// Claim reserves host for t; it returns the current holder if host is taken.
+// joins reports whether t may join cur's hostname as another pool member.
+func joins(t, cur *Tunnel) bool {
+	return t.pool && cur.pool && t.UserID == cur.UserID && t.poolKey == cur.poolKey
+}
+
+// Claim reserves host for t; it returns a current holder if host is taken.
+// Pool members with matching settings share the hostname.
 func (r *Registry) Claim(t *Tunnel) (existing *Tunnel, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if cur := r.byHost[t.Hostname]; cur != nil {
-		return cur, false
+	var holders []*Tunnel
+	if slot := r.byHost[t.Hostname]; slot != nil {
+		holders = slot.members
 	}
-	if cur := r.pending[t.Hostname]; cur != nil {
-		return cur, false
+	holders = append(slices.Clip(holders), r.pending[t.Hostname]...)
+	for _, cur := range holders {
+		if !joins(t, cur) {
+			return cur, false
+		}
 	}
-	r.pending[t.Hostname] = t
+	r.pending[t.Hostname] = append(r.pending[t.Hostname], t)
 	return nil, true
 }
 
@@ -179,34 +228,63 @@ func (r *Registry) Claim(t *Tunnel) (existing *Tunnel, ok bool) {
 func (r *Registry) Activate(t *Tunnel) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.pending[t.Hostname] != t {
+	pend := r.pending[t.Hostname]
+	i := slices.Index(pend, t)
+	if i < 0 {
 		return
 	}
-	delete(r.pending, t.Hostname)
-	r.byHost[t.Hostname] = t
+	r.setPending(t.Hostname, slices.Delete(slices.Clone(pend), i, i+1))
+	slot := r.byHost[t.Hostname]
+	members := []*Tunnel{t}
+	if slot != nil {
+		members = append(slices.Clone(slot.members), t)
+	}
+	next := &hostSlot{members: members}
+	if slot != nil {
+		next.next.Store(slot.next.Load())
+	}
+	r.byHost[t.Hostname] = next
 	r.byID[t.ID] = t
+}
+
+func (r *Registry) setPending(host string, ts []*Tunnel) {
+	if len(ts) == 0 {
+		delete(r.pending, host)
+	} else {
+		r.pending[host] = ts
+	}
 }
 
 func (r *Registry) Release(t *Tunnel) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.byHost[t.Hostname] == t {
-		delete(r.byHost, t.Hostname)
+	if slot := r.byHost[t.Hostname]; slot != nil {
+		if i := slices.Index(slot.members, t); i >= 0 {
+			if len(slot.members) == 1 {
+				delete(r.byHost, t.Hostname)
+			} else {
+				next := &hostSlot{members: slices.Delete(slices.Clone(slot.members), i, i+1)}
+				next.next.Store(slot.next.Load())
+				r.byHost[t.Hostname] = next
+			}
+		}
 	}
-	if r.pending[t.Hostname] == t {
-		delete(r.pending, t.Hostname)
+	if pend := r.pending[t.Hostname]; slices.Contains(pend, t) {
+		i := slices.Index(pend, t)
+		r.setPending(t.Hostname, slices.Delete(slices.Clone(pend), i, i+1))
 	}
 	if t.ID != "" && r.byID[t.ID] == t {
 		delete(r.byID, t.ID)
 	}
 }
 
+// Tunnels returns every routable tunnel, pool members included.
 func (r *Registry) Tunnels() []*Tunnel {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]*Tunnel, 0, len(r.byHost))
-	for _, t := range r.byHost {
-		out = append(out, t)
+	for _, slot := range r.byHost {
+		out = append(out, slot.members...)
 	}
 	return out
 }
@@ -215,7 +293,7 @@ func (r *Registry) Tunnels() []*Tunnel {
 func (r *Registry) InUse(host string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.byHost[host] != nil || r.pending[host] != nil
+	return r.byHost[host] != nil || len(r.pending[host]) > 0
 }
 
 // CountForUser counts online and pending tunnels of a user.
@@ -223,14 +301,18 @@ func (r *Registry) CountForUser(userID string) int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	n := 0
-	for _, t := range r.byHost {
-		if t.UserID == userID {
-			n++
+	for _, slot := range r.byHost {
+		for _, t := range slot.members {
+			if t.UserID == userID {
+				n++
+			}
 		}
 	}
-	for _, t := range r.pending {
-		if t.UserID == userID {
-			n++
+	for _, ts := range r.pending {
+		for _, t := range ts {
+			if t.UserID == userID {
+				n++
+			}
 		}
 	}
 	return n

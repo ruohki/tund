@@ -75,6 +75,9 @@ type TunnelConfig struct {
 	// reaching its maximum lifetime.
 	RestartOnExpiry bool `yaml:"restart_on_expiry,omitempty"`
 
+	// Pool shares the hostname with your other tunnels that use pool (http).
+	Pool bool `yaml:"pool,omitempty"`
+
 	// Traffic rules (http): see protocol.Rules.
 	RequestHeaders  *HeaderRulesConfig `yaml:"request_headers,omitempty"`
 	ResponseHeaders *HeaderRulesConfig `yaml:"response_headers,omitempty"`
@@ -242,6 +245,7 @@ func (t *TunnelConfig) specIn(name, baseDir string) (TunnelSpec, error) {
 		TerminateKey:  resolvePath(baseDir, t.TerminateKey),
 
 		RestartOnExpiry: t.RestartOnExpiry,
+		Pool:            t.Pool,
 	}
 	if spec.AllowIPs, err = NormalizeAllowIPs(t.AllowIPs); err != nil {
 		return TunnelSpec{}, fmt.Errorf("tunnel %q: %w", name, err)
