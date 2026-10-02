@@ -220,7 +220,7 @@ function DnsRecords({ domain, cfg }: { domain: DomainItem; cfg: PublicConfig }) 
   );
 }
 
-function PolicyEditor({ domain, providers }: { domain: DomainItem; providers: Provider[] }) {
+function PolicyEditor({ domain, providers, passthrough }: { domain: DomainItem; providers: Provider[]; passthrough: boolean }) {
   const [state, action] = useActionState(updatePolicyAction, null);
   const [mode, setMode] = useState(domain.authMode);
   const modes = [
@@ -325,8 +325,14 @@ function PolicyEditor({ domain, providers }: { domain: DomainItem; providers: Pr
         </SubmitButton>
         <p className="text-[12px] text-muted">
           Applies to HTTP tunnels on this {domain.kind === "custom" ? "domain" : "hostname"} unless the client passes its
-          own <code className="font-mono">--password</code> or <code className="font-mono">--oidc</code>. TCP and TLS
-          tunnels can limit visitors by IP address with <code className="font-mono">--allow-ip</code> on the command line.
+          own <code className="font-mono">--password</code> or <code className="font-mono">--oidc</code>.
+          {passthrough ? (
+            <>
+              {" "}
+              TCP and TLS tunnels can limit visitors by IP address with <code className="font-mono">--allow-ip</code> on the
+              command line.
+            </>
+          ) : null}
         </p>
       </div>
       <FormMessage state={state} />
@@ -465,7 +471,7 @@ export function DomainRow({
 
       {open === "access" ? (
         <div className="mt-3 rounded-md border border-line p-3">
-          <PolicyEditor domain={domain} providers={providers} />
+          <PolicyEditor domain={domain} providers={providers} passthrough={Boolean(cfg.passthrough)} />
         </div>
       ) : null}
 

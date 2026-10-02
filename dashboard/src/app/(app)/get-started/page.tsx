@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { PASSTHROUGH_OFF, customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
+import { customDomainsEnabled, passthroughEnabled } from "@/lib/abuse";
 import { defaultStaticHostname } from "@/lib/static-hostnames";
 import { config, publicConfig } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
@@ -42,7 +42,10 @@ export default async function GetStartedPage() {
     ["--subdomain <name>", `Use <name>.${cfg.baseDomain} instead of your default static hostname.`],
     ["--pin", "Keep the hostname of this run as one of your static hostnames."],
     ["--random", "Use a throwaway hostname for this run only."],
-    ["--allow-ip <list>", "Only accept visitors from these IPs or CIDRs, e.g. 203.0.113.7,10.0.0.0/8. Works for HTTP, TCP and TLS."],
+    [
+      "--allow-ip <list>",
+      `Only accept visitors from these IPs or CIDRs, e.g. 203.0.113.7,10.0.0.0/8.${passthrough ? " Works for HTTP, TCP and TLS." : ""}`,
+    ],
     ...(customDomains ? ([["--domain <host>", "Use a custom domain you verified under Domains."]] as [string, string][]) : []),
     ["--name <name>", "Label shown in the dashboard. Defaults to http-<port>."],
     ["--host-header rewrite", "Send Host: localhost:<port> upstream, for dev servers that reject unknown hosts."],
@@ -128,67 +131,61 @@ export default async function GetStartedPage() {
         </Panel>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Panel
-          id="tcp"
-          title="TCP tunnels"
-          description="For SSH, databases, game servers and anything else that isn't HTTP."
-          bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
-        >
-          {!passthrough ? (
-            <p>{PASSTHROUGH_OFF}</p>
-          ) : tcp ? (
-            <>
-              <p>Expose a local port on a public TCP port of {tcp.host}:</p>
-              <Command>tund tcp 22</Command>
-              <p>
-                tund prints an address like <code className="font-mono text-[12.5px] text-ink">tcp://{tcp.host}:{tcp.from}</code>.
-                Connect with the usual tools:
-              </p>
-              <Command>{`ssh -p ${tcp.from} you@${tcp.host}`}</Command>
-              <Command>tund tcp 5432 --pin</Command>
-              <Command>{`psql "host=${tcp.host} port=<the port tund printed> user=postgres"`}</Command>
-              <p>
-                <code className="font-mono text-[12.5px] text-ink">--pin</code> keeps the port for next time (it becomes a
-                static TCP port under Domains); <code className="font-mono text-[12.5px] text-ink">--remote-port N</code> asks
-                for a specific one in {tcp.from}–{tcp.to}. Password and single sign-on don&apos;t apply to raw TCP, so use{" "}
-                <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> to limit who can connect.
-              </p>
-            </>
-          ) : (
-            <p>TCP tunnels aren&apos;t enabled on this server. An administrator can turn them on with TUND_TCP_PORTS.</p>
-          )}
-        </Panel>
-        <Panel
-          id="tls"
-          title="TLS passthrough"
-          description="The edge routes by hostname and never decrypts the traffic."
-          bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
-        >
-          {passthrough ? (
-            <>
-              <p>Forward TLS connections to a local service that has its own certificate:</p>
-              <Command>{customDomains ? "tund tls 8443 --domain secure.example.com" : "tund tls 8443 --subdomain secure"}</Command>
-              <p>
-                Visitors see your service&apos;s certificate
-                {customDomains ? ", so this fits best on a verified custom domain with a certificate you own" : null}. On a{" "}
-                {cfg.baseDomain} hostname, let the client terminate TLS instead:
-              </p>
-              <Command>tund tls 8080 --terminate-cert cert.pem --terminate-key key.pem</Command>
-              <p>
-                The client decrypts with that certificate and forwards plain traffic to your local port. Hostname flags work as
-                for HTTP (<code className="font-mono text-[12.5px] text-ink">--subdomain</code>,{" "}
-                <code className="font-mono text-[12.5px] text-ink">--pin</code>,{" "}
-                <code className="font-mono text-[12.5px] text-ink">--random</code>), and{" "}
-                <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> limits who can connect. Connections show
-                up under Inspect.
-              </p>
-            </>
-          ) : (
-            <p>{PASSTHROUGH_OFF}</p>
-          )}
-        </Panel>
-      </div>
+      {passthrough ? (
+        <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Panel
+            id="tcp"
+            title="TCP tunnels"
+            description="For SSH, databases, game servers and anything else that isn't HTTP."
+            bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
+          >
+            {tcp ? (
+              <>
+                <p>Expose a local port on a public TCP port of {tcp.host}:</p>
+                <Command>tund tcp 22</Command>
+                <p>
+                  tund prints an address like <code className="font-mono text-[12.5px] text-ink">tcp://{tcp.host}:{tcp.from}</code>.
+                  Connect with the usual tools:
+                </p>
+                <Command>{`ssh -p ${tcp.from} you@${tcp.host}`}</Command>
+                <Command>tund tcp 5432 --pin</Command>
+                <Command>{`psql "host=${tcp.host} port=<the port tund printed> user=postgres"`}</Command>
+                <p>
+                  <code className="font-mono text-[12.5px] text-ink">--pin</code> keeps the port for next time (it becomes a
+                  static TCP port under Domains); <code className="font-mono text-[12.5px] text-ink">--remote-port N</code> asks
+                  for a specific one in {tcp.from}–{tcp.to}. Password and single sign-on don&apos;t apply to raw TCP, so use{" "}
+                  <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> to limit who can connect.
+                </p>
+              </>
+            ) : (
+              <p>TCP tunnels aren&apos;t enabled on this server. An administrator can turn them on with TUND_TCP_PORTS.</p>
+            )}
+          </Panel>
+          <Panel
+            id="tls"
+            title="TLS passthrough"
+            description="The edge routes by hostname and never decrypts the traffic."
+            bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
+          >
+            <p>Forward TLS connections to a local service that has its own certificate:</p>
+            <Command>{customDomains ? "tund tls 8443 --domain secure.example.com" : "tund tls 8443 --subdomain secure"}</Command>
+            <p>
+              Visitors see your service&apos;s certificate
+              {customDomains ? ", so this fits best on a verified custom domain with a certificate you own" : null}. On a{" "}
+              {cfg.baseDomain} hostname, let the client terminate TLS instead:
+            </p>
+            <Command>tund tls 8080 --terminate-cert cert.pem --terminate-key key.pem</Command>
+            <p>
+              The client decrypts with that certificate and forwards plain traffic to your local port. Hostname flags work as
+              for HTTP (<code className="font-mono text-[12.5px] text-ink">--subdomain</code>,{" "}
+              <code className="font-mono text-[12.5px] text-ink">--pin</code>,{" "}
+              <code className="font-mono text-[12.5px] text-ink">--random</code>), and{" "}
+              <code className="font-mono text-[12.5px] text-ink">--allow-ip</code> limits who can connect. Connections show
+              up under Inspect.
+            </p>
+          </Panel>
+        </div>
+      ) : null}
 
       <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <Panel

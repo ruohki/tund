@@ -42,12 +42,13 @@ export default async function DomainsPage() {
   ]);
   // Static TCP ports only for accounts that may open TCP tunnels.
   const tcp = passthroughOn ? tcpRange : null;
+  cfg.passthrough = passthroughOn;
   const statics = items.filter((i) => i.kind === "subdomain");
   const customs = items.filter((i) => i.kind === "custom");
   const provs = providers.map((p) => ({ id: p.id, name: p.name, slug: p.slug, ref: p.ref }));
   const staticFull =
     pinned.limit !== null && pinned.used >= pinned.limit
-      ? `You're using all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames and TCP ports) your account can have. Release one to add another.`
+      ? `You're using all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames${tcp ? " and TCP ports" : ""}) your account can have. Release one to add another.`
       : null;
   const customFull = !customOn
     ? CUSTOM_DOMAINS_OFF

@@ -64,6 +64,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   ]);
   // Static TCP ports only for accounts that may open TCP tunnels.
   const tcp = passthroughOn ? tcpRange : null;
+  cfg.passthrough = passthroughOn;
 
   const members: MemberItem[] = memberRows.map((r) => ({
     id: r.id,
@@ -87,7 +88,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const customs = domains.filter((d) => d.kind === "custom");
   const staticFull =
     pinned.limit !== null && pinned.used >= pinned.limit
-      ? `This team uses all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames and TCP ports) it can have.`
+      ? `This team uses all ${pinned.limit} static ${pinned.limit === 1 ? "address" : "addresses"} (static hostnames${tcp ? " and TCP ports" : ""}) it can have.`
       : null;
   const customFull = !customOn
     ? CUSTOM_DOMAINS_OFF

@@ -34,6 +34,8 @@ export type PublicConfig = {
   serverIp: string;
   /** Every public address of this instance (lib/servers.ts); set by pages that show DNS instructions. */
   serverIps?: string[];
+  /** Whether the viewer may open TCP and TLS tunnels (passthroughEnabled); set by the Domains and team pages. */
+  passthrough?: boolean;
 };
 
 /** The subset that is safe to hand to client components. */
