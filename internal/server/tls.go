@@ -72,7 +72,7 @@ func newCerts(s *Server) *Certs {
 
 	if s.cfg.DNSProvider != "" {
 		var provider certmagic.DNSProvider
-		var propagationDelay time.Duration
+		var propagationDelay, propagationTimeout time.Duration // 0 = certmagic's defaults
 		switch s.cfg.DNSProvider {
 		case "hetzner":
 			provider = &hetzner.Provider{APIToken: s.cfg.DNSAPIToken}
@@ -85,14 +85,22 @@ func newCerts(s *Server) *Certs {
 			provider = &cloudflare.Provider{APIToken: s.cfg.DNSAPIToken}
 		case "bunny":
 			provider = &bunny.Provider{AccessKey: s.cfg.DNSAPIToken}
+			// Bunny serves a new record after about a minute, and its
+			// nameservers cache a "no such record" answer from an earlier
+			// lookup for far longer than certmagic waits. So don't look
+			// before it's published, and give slow publishing room.
+			propagationDelay = 2 * time.Minute
+			propagationTimeout = 10 * time.Minute
 		}
 		wildcardCfg = certmagic.New(cache, certmagic.Config{Storage: storage, Logger: logger})
 		wildcardCfg.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(wildcardCfg, certmagic.ACMEIssuer{
-			CA:          s.cfg.ACMECA,
-			Email:       s.cfg.ACMEEmail,
-			Agreed:      true,
-			Logger:      logger,
-			DNS01Solver: &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{DNSProvider: provider, PropagationDelay: propagationDelay}},
+			CA:     s.cfg.ACMECA,
+			Email:  s.cfg.ACMEEmail,
+			Agreed: true,
+			Logger: logger,
+			DNS01Solver: &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{
+				DNSProvider: provider, PropagationDelay: propagationDelay, PropagationTimeout: propagationTimeout,
+			}},
 		})}
 		c.wildcard = true
 		c.wildcardCfg = wildcardCfg
