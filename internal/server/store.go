@@ -597,12 +597,13 @@ type UserLimitRow struct {
 	TransferQuotaGB *int
 	CustomDomains   *bool // nil: the instance setting
 	Passthrough     *bool // nil: the instance setting
+	TunnelLifetime  *int  // minutes; nil: the instance setting
 }
 
 func (s *Store) UserLimits(ctx context.Context, userID string) (*UserLimitRow, error) {
 	var l UserLimitRow
-	err := s.pool.QueryRow(ctx, `select is_admin, bandwidth_kbps, transfer_quota_gb, custom_domains, passthrough from users where id = $1`, userID).
-		Scan(&l.IsAdmin, &l.BandwidthKbps, &l.TransferQuotaGB, &l.CustomDomains, &l.Passthrough)
+	err := s.pool.QueryRow(ctx, `select is_admin, bandwidth_kbps, transfer_quota_gb, custom_domains, passthrough, tunnel_lifetime_minutes from users where id = $1`, userID).
+		Scan(&l.IsAdmin, &l.BandwidthKbps, &l.TransferQuotaGB, &l.CustomDomains, &l.Passthrough, &l.TunnelLifetime)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
 	}

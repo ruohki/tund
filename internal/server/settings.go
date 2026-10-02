@@ -23,6 +23,7 @@ type Runtime struct {
 	SMTPConfigured           bool
 	BandwidthKbps            int    // per account and direction
 	TransferGB               int    // per account and month
+	TunnelLifetime           int    // minutes; users.tunnel_lifetime_minutes overrides it
 	CustomDomains            bool   // users.custom_domains overrides it
 	Passthrough              bool   // TCP and TLS tunnels; users.passthrough overrides it
 	InstanceName             string // Admin → Settings → Branding; shown on the edge's pages
@@ -56,6 +57,7 @@ func defaultRuntime(c *Config) *Runtime {
 		CaptureMaxBody:    c.CaptureMaxBody,
 		BandwidthKbps:     c.BandwidthKbps,
 		TransferGB:        c.TransferGB,
+		TunnelLifetime:    c.TunnelLifetime,
 		CustomDomains:     c.CustomDomains,
 		Passthrough:       c.Passthrough,
 		InstanceName:      defaultInstanceName,
@@ -91,6 +93,8 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			ok = setInt(raw, &r.BandwidthKbps, 0, 100_000_000)
 		case "limit_transfer_gb":
 			ok = setInt(raw, &r.TransferGB, 0, 1_000_000)
+		case "limit_tunnel_lifetime":
+			ok = setInt(raw, &r.TunnelLifetime, 0, 525_600)
 		case "instance_name":
 			ok = json.Unmarshal(raw, &r.InstanceName) == nil
 			if r.InstanceName = strings.TrimSpace(r.InstanceName); r.InstanceName == "" {

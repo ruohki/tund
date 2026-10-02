@@ -434,13 +434,14 @@ Per **account** (the tunnel owner), across all of its tunnels:
 
 * **Throughput cap** — `limit_bandwidth_kbps` setting (env `TUND_BANDWIDTH_KBPS`, default 0 = unlimited), in kilobits per second **per direction** (visitor→local and local→visitor each). Enforced with token buckets per account on each node (burst 256 KiB).
 * **Monthly transfer quota** — `limit_transfer_gb` setting (env `TUND_TRANSFER_GB`, default 0 = unlimited), in GB (10^9 bytes) per calendar month (UTC), counting both directions.
+* **Tunnel lifetime** (migration 0017) — `limit_tunnel_lifetime` setting (env `TUND_MAX_TUNNEL_LIFETIME`, default 0 = unlimited), in minutes; per-user override `users.tunnel_lifetime_minutes` (NULL = the setting, 0 = unlimited); admins are exempt unless overridden. Every node checks its own tunnels every 15 s and closes those older than the lifetime (control `closed` with "this tunnel reached the maximum lifetime of 2h on this server; start it again"); changed settings apply to running tunnels on the next check. The `bound` reply carries the limit in `warning` ("this server closes tunnels after 2h"). The dashboard shows "closes in …" on the user's own online tunnels.
 * Per-user overrides: `users.bandwidth_kbps`, `users.transfer_quota_gb` (NULL = default, 0 = unlimited). Admins are unlimited unless an override is set.
 
 Metering wraps the tunnel data streams, so it counts everything that passes through a tunnel (HTTP headers + bodies, WebSockets, SSE, TCP, TLS). Nodes aggregate in memory and upsert `usage_daily` every 15 s; request/connection counts are added too. Each node re-reads the month's usage per active account every 60 s (multi-node accuracy is eventually consistent).
 
 When the quota is exhausted: HTTP visitors get **509 Bandwidth Limit Exceeded** (edge page, plain text for non-browsers), TCP/TLS connections are closed, the client receives a control `error` message once ("monthly transfer quota of N GB used up; resets on <date>"), and new binds get bind_error with the same text. Raising the limit (settings or user override → `NOTIFY tund_config {"kind":"settings"}` / `{"kind":"user_updated","id"}`) lifts the block immediately.
 
-API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests","month_connections","period_start","period_end"}` and `limits` gains `"bandwidth_kbps"`, `"transfer_gb"`. Dashboard: users see this month's usage vs quota (overview + settings), a daily usage chart; admins see usage per account and can set overrides.
+API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests","month_connections","period_start","period_end"}` and `limits` gains `"bandwidth_kbps"`, `"transfer_gb"`, `"tunnel_lifetime_minutes"` (effective; 0 = unlimited). Dashboard: users see this month's usage vs quota (overview + settings), a daily usage chart; admins see usage per account and can set overrides.
 
 ## Abuse protection (migration 0009)
 

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { formatBytes, formatDateTime, formatKbps, formatNumber, formatTransfer, osLabel, sessionLength, timeAgo } from "@/lib/format";
+import { formatBytes, formatDateTime, formatKbps, formatLifetime, formatNumber, formatTransfer, osLabel, sessionLength, timeAgo } from "@/lib/format";
 import { effectiveLimits, monthUsage } from "@/lib/usage";
 import { getSettings } from "@/lib/settings";
 import { LimitsForm } from "./limits-form";
@@ -148,6 +148,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
               [
                 ["Transfer this month", `${formatTransfer(monthBytes)}${limits.transferGb ? ` of ${limits.transferGb} GB` : ""}`],
                 ["Speed limit", formatKbps(limits.bandwidthKbps)],
+                ["Tunnel lifetime", formatLifetime(limits.lifetimeMinutes)],
                 ["Requests, 24h", formatNumber(counts.req24)],
                 ["Requests, 7 days", formatNumber(counts.req7d)],
                 ["Captured bodies, 7 days", formatBytes(Number(counts.bytes7d))],
@@ -183,7 +184,7 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
       </div>
 
       <Panel
-        title="Bandwidth"
+        title="Limits"
         description={u.is_admin ? "Admins are unlimited unless you set a value here." : "Overrides the instance defaults for this account."}
         className="mb-6"
         bodyClassName="p-4"
@@ -192,8 +193,10 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
           id={u.id}
           bandwidth={u.bandwidth_kbps ?? null}
           transfer={u.transfer_quota_gb ?? null}
+          lifetime={u.tunnel_lifetime_minutes ?? null}
           defaultBandwidth={u.is_admin ? "unlimited for admins" : formatKbps(settings.limit_bandwidth_kbps)}
           defaultTransfer={u.is_admin ? "unlimited for admins" : settings.limit_transfer_gb ? `${settings.limit_transfer_gb} GB` : "unlimited"}
+          defaultLifetime={u.is_admin ? "unlimited for admins" : formatLifetime(settings.limit_tunnel_lifetime)}
         />
       </Panel>
 

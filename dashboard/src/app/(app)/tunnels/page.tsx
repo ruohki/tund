@@ -6,7 +6,8 @@ import { config } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { db } from "@/lib/db";
 import { listTunnels } from "@/lib/metrics";
-import { formatDateTime, formatNumber, osLabel, sessionLength, timeAgo } from "@/lib/format";
+import { formatDateTime, formatDuration, formatLifetime, formatNumber, osLabel, sessionLength, timeAgo, timeLeft } from "@/lib/format";
+import { effectiveLimits } from "@/lib/usage";
 import { AuthBadge, Badge, EmptyState, PageHeader, Panel, ProtoBadge } from "@/components/ui";
 import { Command } from "@/components/client-ui";
 import { RouteLine } from "@/components/route-line";
@@ -55,7 +56,10 @@ function StaticBadge() {
 
 export default async function TunnelsPage() {
   const user = await requireUser();
-  const tunnels = await listTunnels(user.id, { limit: 150, includeTeams: true });
+  const [tunnels, limits] = await Promise.all([listTunnels(user.id, { limit: 150, includeTeams: true }), effectiveLimits(user)]);
+  // Your own tunnels close after your lifetime; team members' follow theirs.
+  const closesIn = (t: { mine: boolean; startedAt: string }) =>
+    t.mine && limits.lifetimeMinutes ? timeLeft(t.startedAt, limits.lifetimeMinutes) : null;
   const online = tunnels.filter((t) => !t.endedAt);
   const myOnline = online.filter((t) => t.mine).length;
   const recent = tunnels.filter((t) => t.endedAt);
@@ -145,6 +149,11 @@ export default async function TunnelsPage() {
                     <dt className="text-muted">Connected</dt>
                     <dd className="text-ink" title={formatDateTime(t.startedAt)}>
                       {sessionLength(t.startedAt, null)}
+                      {closesIn(t) !== null ? (
+                        <span className="text-muted" title={`This server closes tunnels after ${formatLifetime(limits.lifetimeMinutes)}`}>
+                          , closes in {formatDuration(closesIn(t))}
+                        </span>
+                      ) : null}
                     </dd>
                   </div>
                   <div>

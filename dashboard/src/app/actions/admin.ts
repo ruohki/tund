@@ -300,7 +300,7 @@ function override(fd: FormData, name: string, max: number): number | null | "inv
   return Number.isInteger(n) && n > 0 && n <= max ? n : "invalid";
 }
 
-/** Per-user bandwidth/transfer overrides: inherit the default (NULL), unlimited (0) or a value. */
+/** Per-user bandwidth, transfer and tunnel lifetime overrides: inherit the default (NULL), unlimited (0) or a value. */
 export async function setUserLimitsAction(_: FormState, fd: FormData): Promise<FormState> {
   const admin = await requireAdmin();
   const u = await targetUser(str(fd, "id"));
@@ -309,9 +309,11 @@ export async function setUserLimitsAction(_: FormState, fd: FormData): Promise<F
   const transfer = override(fd, "transfer", 10_000_000);
   if (bandwidth === "invalid") return { error: "Enter a speed limit in kbit/s (a whole number above 0)." };
   if (transfer === "invalid") return { error: "Enter a monthly transfer in GB (a whole number above 0)." };
-  await db()`update users set bandwidth_kbps = ${bandwidth}, transfer_quota_gb = ${transfer} where id = ${u.id}`;
+  const lifetime = override(fd, "lifetime", 525_600);
+  if (lifetime === "invalid") return { error: "Enter a tunnel lifetime in minutes (a whole number from 1 to 525600)." };
+  await db()`update users set bandwidth_kbps = ${bandwidth}, transfer_quota_gb = ${transfer}, tunnel_lifetime_minutes = ${lifetime} where id = ${u.id}`;
   await notify("tund_config", { kind: "user_updated", id: u.id });
-  await audit(actorOf(admin), "user.limits", u.email, { bandwidth_kbps: bandwidth, transfer_quota_gb: transfer });
+  await audit(actorOf(admin), "user.limits", u.email, { bandwidth_kbps: bandwidth, transfer_quota_gb: transfer, tunnel_lifetime_minutes: lifetime });
   refresh();
   return { ok: "Limits saved. They apply to live tunnels right away." };
 }

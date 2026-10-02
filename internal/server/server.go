@@ -423,6 +423,7 @@ func (s *Server) Run(ctx context.Context) error {
 	go s.store.Listen(bg, "tund_config", s.onConfigChange)
 	go s.latestClientLoop(bg)
 	go s.meterLoop(bg)
+	go s.lifetimeLoop(bg)
 	go s.safeBrowsingLoop(bg)
 	go s.phishLoop(bg)
 	go func() {

@@ -59,22 +59,28 @@ export type Limits = {
   bandwidthKbps: number;
   /** GB per month; 0 = unlimited. */
   transferGb: number;
+  /** Minutes a tunnel may live; 0 = unlimited. */
+  lifetimeMinutes: number;
   bandwidthOverride: number | null;
   transferOverride: number | null;
+  lifetimeOverride: number | null;
 };
 
 /** Per-user overrides win; otherwise instance defaults, which admins are exempt from. */
 export async function effectiveLimits(user: { id: string; isAdmin: boolean }): Promise<Limits> {
   const [s, [u]] = await Promise.all([
     getSettings(),
-    db()`select bandwidth_kbps, transfer_quota_gb from users where id = ${user.id}`,
+    db()`select bandwidth_kbps, transfer_quota_gb, tunnel_lifetime_minutes from users where id = ${user.id}`,
   ]);
   const bo = (u?.bandwidth_kbps as number | null) ?? null;
   const to = (u?.transfer_quota_gb as number | null) ?? null;
+  const lo = (u?.tunnel_lifetime_minutes as number | null) ?? null;
   return {
     bandwidthKbps: bo ?? (user.isAdmin ? 0 : s.limit_bandwidth_kbps),
     transferGb: to ?? (user.isAdmin ? 0 : s.limit_transfer_gb),
+    lifetimeMinutes: lo ?? (user.isAdmin ? 0 : s.limit_tunnel_lifetime),
     bandwidthOverride: bo,
     transferOverride: to,
+    lifetimeOverride: lo,
   };
 }

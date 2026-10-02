@@ -106,6 +106,9 @@ func (s *Server) apiMe(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	limits["bandwidth_kbps"], limits["transfer_gb"] = m.kbps, int(m.quotaBytes/1_000_000_000)
 	m.mu.Unlock()
+	if max, err := s.tunnelLifetime(r.Context(), acct.UserID); err == nil {
+		limits["tunnel_lifetime_minutes"] = int(max / time.Minute)
+	}
 	start, end := monthBounds(time.Now())
 	usage, err := s.store.MonthUsage(r.Context(), acct.UserID, start)
 	if err != nil {

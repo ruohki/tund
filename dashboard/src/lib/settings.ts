@@ -40,6 +40,7 @@ export type Settings = {
   limit_teams: number;
   limit_bandwidth_kbps: number;
   limit_transfer_gb: number;
+  limit_tunnel_lifetime: number;
   auto_pin: boolean;
   browser_warning: boolean;
   abuse_contact: string;
@@ -217,6 +218,17 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 0,
     max: 10_000_000,
     fallback: () => envInt("TUND_TRANSFER_GB", 0),
+  },
+  {
+    key: "limit_tunnel_lifetime",
+    group: "Limits",
+    label: "Maximum tunnel lifetime (minutes)",
+    help: "Tunnels are closed this many minutes after they start; the client can start them again. 0 = unlimited. Admins are exempt unless you set a value for them under Users. Applies to running tunnels too.",
+    kind: "int",
+    env: "TUND_MAX_TUNNEL_LIFETIME",
+    min: 0,
+    max: 525_600,
+    fallback: () => envInt("TUND_MAX_TUNNEL_LIFETIME", 0),
   },
   {
     key: "auto_pin",

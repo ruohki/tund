@@ -61,6 +61,7 @@ type Config struct {
 	UntrustedTCP, UntrustedTLS bool
 	SafeBrowsingKey            string
 	TransferGB                 int // per account and month; 0 = unlimited
+	TunnelLifetime             int // minutes a tunnel may live; 0 = unlimited
 	AutoPin                    bool
 	BrowserWarning             bool   // show the anti-phishing interstitial to browser visitors
 	AbuseContact               string // email or URL shown on the warning page
@@ -217,6 +218,9 @@ func LoadConfig() (*Config, error) {
 		errs = append(errs, err)
 	}
 	if c.TransferGB, err = envInt("TUND_TRANSFER_GB", 0); err != nil {
+		errs = append(errs, err)
+	}
+	if c.TunnelLifetime, err = envInt("TUND_MAX_TUNNEL_LIFETIME", 0); err != nil {
 		errs = append(errs, err)
 	}
 	if pr := env("TUND_TCP_PORTS", ""); pr != "" {

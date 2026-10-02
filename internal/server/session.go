@@ -402,6 +402,13 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 	if proto == protocol.ProtoTCP {
 		go s.serveTCP(t)
 	}
+	if max, err := s.tunnelLifetime(ctx, acct.UserID); err == nil && max > 0 {
+		note := "this server closes tunnels after " + formatLifetime(max)
+		if warning != "" {
+			note = warning + "; " + note
+		}
+		warning = note
+	}
 	s.store.Notify(ctx, "tund_tunnels", tunnelEvent(t, s.cfg.NodeName(), "online"))
 	return t, warning, nil
 }

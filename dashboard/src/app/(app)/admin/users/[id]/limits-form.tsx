@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { setUserLimitsAction } from "@/app/actions/admin";
 import { cn, FormMessage, inputClass, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/client-ui";
+import { formatLifetime } from "@/lib/format";
 
 type Mode = "inherit" | "unlimited" | "custom";
 const modeOf = (v: number | null): Mode => (v === null ? "inherit" : v === 0 ? "unlimited" : "custom");
@@ -65,14 +66,18 @@ export function LimitsForm({
   id,
   bandwidth,
   transfer,
+  lifetime,
   defaultBandwidth,
   defaultTransfer,
+  defaultLifetime,
 }: {
   id: string;
   bandwidth: number | null;
   transfer: number | null;
+  lifetime: number | null;
   defaultBandwidth: string;
   defaultTransfer: string;
+  defaultLifetime: string;
 }) {
   const [state, action] = useActionState(setUserLimitsAction, null);
   return (
@@ -87,6 +92,14 @@ export function LimitsForm({
         hint={(k) => `${(k / 1000).toLocaleString("en", { maximumFractionDigits: 1 })} Mbit/s`}
       />
       <Row name="transfer" label="Transfer per month" unit="GB" value={transfer} inheritLabel={defaultTransfer} />
+      <Row
+        name="lifetime"
+        label="Maximum tunnel lifetime"
+        unit="minutes"
+        value={lifetime}
+        inheritLabel={defaultLifetime}
+        hint={(m) => formatLifetime(m)}
+      />
       <FormMessage state={state} />
       <div>
         <SubmitButton size="sm" pendingText="Saving…">

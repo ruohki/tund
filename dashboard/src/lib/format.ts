@@ -21,6 +21,16 @@ export function formatDuration(ms: number | null | undefined): string {
   return h ? `${d}d ${h}h` : `${d}d`;
 }
 
+/** A lifetime set in minutes: "45 min", "2 h", "1 h 30 min", "3 days"; 0 = unlimited. */
+export function formatLifetime(minutes: number): string {
+  if (!minutes) return "unlimited";
+  if (minutes % 1440 === 0) return `${minutes / 1440} ${minutes === 1440 ? "day" : "days"}`;
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
 export function formatBytes(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   if (n < 1024) return `${n} B`;
@@ -88,6 +98,12 @@ export function sessionLength(start: Date | string, end: Date | string | null, n
   const s = typeof start === "string" ? Date.parse(start) : start.getTime();
   const e = end ? (typeof end === "string" ? Date.parse(end) : end.getTime()) : now;
   return formatDuration(Math.max(0, e - s));
+}
+
+/** Milliseconds until a tunnel started at `start` reaches a lifetime of `minutes`. */
+export function timeLeft(start: Date | string, minutes: number, now = Date.now()): number {
+  const s = typeof start === "string" ? Date.parse(start) : start.getTime();
+  return Math.max(0, s + minutes * 60_000 - now);
 }
 
 export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx";
