@@ -387,6 +387,7 @@ type TunnelOut struct {
 	Requests        int      `json:"requests"`
 	BrowserWarning  bool     `json:"browser_warning,omitempty" jsonschema:"browsers see a one-time warning page before the site; curl/fetch/API clients are not affected"`
 	Warning         string   `json:"warning,omitempty"`
+	ExpiresAt       string   `json:"expires_at,omitempty" jsonschema:"the server closes the tunnel at this time (maximum tunnel lifetime); start it again afterwards"`
 	Error           string   `json:"error,omitempty"`
 }
 
@@ -398,6 +399,9 @@ func (lt *localTunnel) out() TunnelOut {
 		OIDC: lt.oidc, OIDCAllow: lt.allow,
 		Proto: info.Proto, RemotePort: info.RemotePort, AllowIPs: lt.allowIPs, Connections: info.Connections,
 		TunnelID: info.TunnelID, Requests: info.Requests, Error: info.Error, BrowserWarning: info.BrowserWarning,
+	}
+	if !info.ExpiresAt.IsZero() {
+		o.ExpiresAt = info.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 	switch o.Proto {
 	case protocol.ProtoTCP:

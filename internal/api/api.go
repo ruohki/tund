@@ -120,6 +120,8 @@ type Tunnel struct {
 	AuthMode   string       `json:"auth_mode"`
 	Static     bool         `json:"static"`
 	StartedAt  string       `json:"started_at"`
+	ExpiresAt  string       `json:"expires_at,omitempty"` // maximum lifetime; empty = unlimited
+	Node       string       `json:"node,omitempty"`       // server node holding the tunnel
 	Client     TunnelClient `json:"client"`
 	Proto      string       `json:"proto"`       // http, tcp or tls
 	RemotePort int          `json:"remote_port"` // tcp

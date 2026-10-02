@@ -251,6 +251,51 @@ func (d *Display) warningRow(t tunnelView) {
 	if t.Warning != "" {
 		d.println(d.row("", d.c(yellow, "⚠ "+t.Warning)))
 	}
+	if !t.ExpiresAt.IsZero() {
+		note := "closes " + formatClock(t.ExpiresAt) + " (in " + formatRemaining(time.Until(t.ExpiresAt)) + ", maximum tunnel lifetime)"
+		if t.RestartOnExpiry {
+			note += " · restarts automatically"
+		} else {
+			note += " · --restart-on-expiry starts it again"
+		}
+		d.println(d.row("", d.c(dim, note)))
+	}
+}
+
+// formatClock shows a time of day, with the date when it isn't today.
+func formatClock(t time.Time) string {
+	t = t.Local()
+	if y, m, dd := t.Date(); time.Now().Format("2006-01-02") != fmt.Sprintf("%04d-%02d-%02d", y, m, dd) {
+		return t.Format("Mon 2 Jan 15:04")
+	}
+	return "at " + t.Format("15:04")
+}
+
+// formatRemaining renders a time left as "45m", "2h", "1h30m" or "3d4h".
+func formatRemaining(d time.Duration) string {
+	m := int((d + time.Minute - 1) / time.Minute)
+	switch {
+	case m < 1:
+		return "less than a minute"
+	case m < 60:
+		return fmt.Sprintf("%dm", m)
+	case m < 1440:
+		if m%60 == 0 {
+			return fmt.Sprintf("%dh", m/60)
+		}
+		return fmt.Sprintf("%dh%dm", m/60, m%60)
+	}
+	if h := (m % 1440) / 60; h > 0 {
+		return fmt.Sprintf("%dd%dh", m/1440, h)
+	}
+	return fmt.Sprintf("%dd", m/1440)
+}
+
+func expiresKV(t tunnelView) string {
+	if t.ExpiresAt.IsZero() {
+		return ""
+	}
+	return t.ExpiresAt.UTC().Format(time.RFC3339)
 }
 
 // browserWarningHint explains the warning page once per process.
@@ -290,7 +335,7 @@ func (d *Display) Header(w welcome, ts []tunnelView) {
 		for _, t := range ts {
 			switch {
 			case t.Online:
-				d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "inspect", inspectURL(w.dashboardURL, t.inspectHost()))
+				d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t), "inspect", inspectURL(w.dashboardURL, t.inspectHost()))
 			case t.Failed:
 				d.logf("tunnel failed", "name", t.Name, "local", t.Local, "error", t.Err)
 			}
@@ -367,7 +412,7 @@ func (d *Display) TunnelOnline(t tunnelView) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.pretty {
-		d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning)
+		d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t))
 		return
 	}
 	d.println(d.row("Forwarding", d.forwarding(t)))
@@ -399,6 +444,18 @@ func (d *Display) TunnelClosed(t tunnelView) {
 		return
 	}
 	d.println(d.c(yellow, fmt.Sprintf("■ %s closed: %s", t.URL, reason)))
+}
+
+// TunnelRestarting announces a tunnel bound again after reaching the
+// maximum lifetime (--restart-on-expiry).
+func (d *Display) TunnelRestarting(t tunnelView) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.pretty {
+		d.logf("tunnel restarting", "name", t.Name, "url", t.URL, "reason", "maximum lifetime reached")
+		return
+	}
+	d.println(d.c(yellow, fmt.Sprintf("↻ %s reached the maximum tunnel lifetime; starting it again", t.URL)))
 }
 
 // Request logs one proxied request.

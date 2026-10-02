@@ -40,6 +40,9 @@ type TunnelSpec struct {
 	AllowIPs      []string // IPs/CIDRs allowed to connect; empty = everyone
 	TerminateCert string   // tls: terminate TLS at the client with this cert…
 	TerminateKey  string   // …and key (PEM files); otherwise passthrough
+	// RestartOnExpiry binds the tunnel again when the server closes it for
+	// reaching the maximum tunnel lifetime.
+	RestartOnExpiry bool
 }
 
 // Options configure a Client.
@@ -132,6 +135,10 @@ type tunnel struct {
 	warning  string
 	err      string
 	retries  int
+	expires  time.Time // the server closes the tunnel then (maximum lifetime)
+	// restarting: bound again after reaching the maximum lifetime; bind
+	// errors are retried while the server lets go of the old tunnel.
+	restarting bool
 }
 
 func (t *tunnel) userNamed() bool {
@@ -470,6 +477,10 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				c.mu.Lock()
 				t.status, t.url, t.host, t.authMode, t.err = statusOnline, m.URL, hostOf(m.URL), m.AuthMode, ""
 				t.static, t.warning, t.tunnelID, t.warnPage = m.Static, m.Warning, m.TunnelID, m.BrowserWarning
+				t.expires, t.restarting = time.Time{}, false
+				if m.ExpiresAt != nil {
+					t.expires = *m.ExpiresAt
+				}
 				// Remember throwaway labels only: static hostnames are resolved
 				// by the server, and remembering one would steer --random to it.
 				t.remote = m.RemotePort
@@ -503,7 +514,7 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				}
 				c.mu.Lock()
 				switch {
-				case !first && t.retries < 5:
+				case (!first || t.restarting) && t.retries < 5:
 					// After a reconnect the server may still hold our old
 					// session for a moment; give it time to let go.
 					t.retries++
@@ -549,6 +560,16 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 					continue
 				}
 				c.mu.Lock()
+				if m.Code == protocol.CodeLifetime && t.spec.RestartOnExpiry {
+					t.status, t.retries, t.restarting, t.warning = statusPending, 0, true, ""
+					v := c.view(t)
+					c.mu.Unlock()
+					c.ui.TunnelRestarting(v)
+					if err := c.sendBind(ctl, t); err != nil {
+						return true, err
+					}
+					continue
+				}
 				t.status, t.err = statusClosed, m.Error
 				v := c.view(t)
 				c.mu.Unlock()
@@ -562,6 +583,8 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				switch {
 				case m.UpdateVersion != "":
 					c.ui.UpdateAvailable(m.UpdateVersion)
+				case m.Code == protocol.CodeLifetime && t != nil && t.spec.RestartOnExpiry:
+					c.ui.Warn(m.Error + "; tund starts it again right away")
 				case m.Error != "":
 					c.ui.Warn(m.Error)
 				}
@@ -669,6 +692,8 @@ type tunnelView struct {
 	RemotePort                                                      int
 	Terminated                                                      bool // tls: terminated at the client
 	Online, Failed, Closed, Static, BrowserWarning                  bool
+	ExpiresAt                                                       time.Time // zero = no maximum lifetime
+	RestartOnExpiry                                                 bool
 }
 
 func (c *Client) view(t *tunnel) tunnelView {
@@ -677,6 +702,7 @@ func (c *Client) view(t *tunnel) tunnelView {
 		Warning: t.warning, Static: t.static, TunnelID: t.tunnelID, BrowserWarning: t.warnPage,
 		Proto: t.spec.proto(), RemotePort: t.remote, Terminated: t.termCfg != nil,
 		Online: t.status == statusOnline, Failed: t.status == statusFailed, Closed: t.status == statusClosed,
+		ExpiresAt: t.expires, RestartOnExpiry: t.spec.RestartOnExpiry,
 	}
 }
 

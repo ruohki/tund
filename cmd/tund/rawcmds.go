@@ -16,6 +16,10 @@ func addAllowIPFlag(f *pflag.FlagSet, dst *[]string) {
 	f.StringSliceVar(dst, "allow-ip", nil, "only these IPs or CIDR ranges may connect, e.g. 203.0.113.7,10.0.0.0/8 (repeatable)")
 }
 
+func addRestartFlag(f *pflag.FlagSet, dst *bool) {
+	f.BoolVar(dst, "restart-on-expiry", false, "start the tunnel again when the server closes it for reaching its maximum lifetime")
+}
+
 // runSpec validates a single tunnel given on the command line and runs it.
 func runSpec(g *globals, spec client.TunnelSpec) error {
 	ips, err := client.NormalizeAllowIPs(spec.AllowIPs)
@@ -42,10 +46,10 @@ func portName(prefix, hostport string) string {
 
 func newTCPCmd(g *globals) *cobra.Command {
 	var (
-		name       string
-		remotePort int
-		pin        bool
-		allowIPs   []string
+		name         string
+		remotePort   int
+		pin, restart bool
+		allowIPs     []string
 	)
 	cmd := &cobra.Command{
 		Use:   "tcp <port | host:port>",
@@ -74,7 +78,7 @@ Protect it with --allow-ip: raw TCP has no password or login page.`,
 			}
 			return runSpec(g, client.TunnelSpec{
 				Name: name, Proto: protocol.ProtoTCP, LocalAddr: local,
-				RemotePort: remotePort, Pin: pin, AllowIPs: allowIPs,
+				RemotePort: remotePort, Pin: pin, AllowIPs: allowIPs, RestartOnExpiry: restart,
 			})
 		},
 	}
@@ -83,13 +87,14 @@ Protect it with --allow-ip: raw TCP has no password or login page.`,
 	f.IntVar(&remotePort, "remote-port", 0, "public port to use (must be free and within the server's TCP port range)")
 	f.BoolVar(&pin, "pin", false, "reserve the resulting public port for your account")
 	addAllowIPFlag(f, &allowIPs)
+	addRestartFlag(f, &restart)
 	return cmd
 }
 
 func newTLSCmd(g *globals) *cobra.Command {
 	var (
 		name, subdomain, domain, certFile, keyFile string
-		pin, random                                bool
+		pin, random, restart                       bool
 		allowIPs                                   []string
 	)
 	cmd := &cobra.Command{
@@ -123,7 +128,7 @@ Hostnames work like for tund http: your static hostname by default,
 				Subdomain: strings.ToLower(strings.TrimSpace(subdomain)),
 				Hostname:  strings.ToLower(strings.TrimSpace(domain)),
 				Pin:       pin, Random: random, AllowIPs: allowIPs,
-				TerminateCert: certFile, TerminateKey: keyFile,
+				TerminateCert: certFile, TerminateKey: keyFile, RestartOnExpiry: restart,
 			})
 		},
 	}
@@ -136,5 +141,6 @@ Hostnames work like for tund http: your static hostname by default,
 	f.StringVar(&certFile, "terminate-cert", "", "terminate TLS here with this certificate (PEM) and forward plaintext")
 	f.StringVar(&keyFile, "terminate-key", "", "private key (PEM) for --terminate-cert")
 	addAllowIPFlag(f, &allowIPs)
+	addRestartFlag(f, &restart)
 	return cmd
 }

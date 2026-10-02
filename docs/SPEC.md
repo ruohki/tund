@@ -74,9 +74,9 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 3. The client opens the first stream: the **control stream**, newline-delimited JSON (`protocol.Message`).
    * S→C `welcome` `{session_id, account, server_version, dashboard_url}` (first message)
    * C→S `bind` `{id, bind:{name, subdomain, hostname, local_addr, host_header, auth}}`
-   * S→C `bound` `{id, tunnel_id, url, auth_mode}` or `bind_error` `{id, error}`
+   * S→C `bound` `{id, tunnel_id, url, auth_mode, expires_at?}` or `bind_error` `{id, error}` (`expires_at`: the server closes the tunnel then, see "Tunnel lifetime")
    * S→C `request` `{id, request:{request_id, method, path, status, duration_ms, remote_addr, error}}` (for the CLI log)
-   * S→C `closed` `{id, error}` — tunnel stopped from the dashboard
+   * S→C `closed` `{id, error, code?}` — tunnel stopped from the dashboard, the API or the server (`code: "lifetime"`: maximum lifetime reached; the hostname is already free, so the client may bind again right away)
    * C→S `unbind` `{id}`
    * either side `error` `{error}` then close
 4. For every upstream TCP connection the server opens a **data stream**, writes a frame
@@ -221,7 +221,7 @@ Served by tund-server on the dashboard host under `/_tund/api/v1/` (so it also w
 | method + path | response |
 | --- | --- |
 | `GET /me` | `{"account":{"id","email","name","is_admin"},"server":{"base_domain","dashboard_url","version"},"limits":{"tunnels","pinned","domains"},"static_hostnames":[{"hostname","url","default"}]}` (limits: 0 = unlimited) |
-| `GET /tunnels` | `{"tunnels":[{"id","name","hostname","url","local_addr","auth_mode","static","started_at","client":{"hostname","os","version"}}]}` — online tunnels of the account |
+| `GET /tunnels` | `{"tunnels":[{"id","name","hostname","url","local_addr","auth_mode","static","started_at","expires_at","node","client":{"hostname","os","version"}}]}` — online tunnels of the account on all machines (`tund status`); `expires_at` is null without a maximum lifetime |
 | `POST /tunnels/{id}/stop` | `{}` |
 | `GET /requests?hostname=&tunnel_id=&method=&status=2xx\|3xx\|4xx\|5xx&path=<substring>&limit=<1..200, default 50>&before=<RFC3339Nano>` | `{"requests":[Summary],"next_before":"<started_at of the last row or empty>"}` newest first |
 | `GET /requests/{id}` | `Summary + {"proto","request":{"headers":{"K":["v"]},"body":Body},"response":{"headers","body":Body}}` |
@@ -435,7 +435,7 @@ Per **account** (the tunnel owner), across all of its tunnels:
 
 * **Throughput cap** — `limit_bandwidth_kbps` setting (env `TUND_BANDWIDTH_KBPS`, default 0 = unlimited), in kilobits per second **per direction** (visitor→local and local→visitor each). Enforced with token buckets per account on each node (burst 256 KiB).
 * **Monthly transfer quota** — `limit_transfer_gb` setting (env `TUND_TRANSFER_GB`, default 0 = unlimited), in GB (10^9 bytes) per calendar month (UTC), counting both directions.
-* **Tunnel lifetime** (migration 0017) — `limit_tunnel_lifetime` setting (env `TUND_MAX_TUNNEL_LIFETIME`, default 0 = unlimited), in minutes; per-user override `users.tunnel_lifetime_minutes` (NULL = the setting, 0 = unlimited); admins are exempt unless overridden. Every node checks its own tunnels every 15 s and closes those older than the lifetime (control `closed` with "this tunnel reached the maximum lifetime of 2h on this server; start it again"); changed settings apply to running tunnels on the next check. The `bound` reply carries the limit in `warning` ("this server closes tunnels after 2h"). The dashboard shows "closes in …" on the user's own online tunnels.
+* **Tunnel lifetime** (migration 0017) — `limit_tunnel_lifetime` setting (env `TUND_MAX_TUNNEL_LIFETIME`, default 0 = unlimited), in minutes; per-user override `users.tunnel_lifetime_minutes` (NULL = the setting, 0 = unlimited); admins are exempt unless overridden. Every node checks its own tunnels every 15 s and closes those older than the lifetime (control `closed` with "this tunnel reached the maximum lifetime of 2h on this server; start it again"); changed settings apply to running tunnels on the next check. The `bound` reply carries `expires_at`; clients older than 0.5.0 (which ignore it) get the limit in `warning` instead ("this server closes tunnels after 2h"). Five minutes before the end the server sends `{"type":"notice","id":"<bind id>","code":"lifetime","expires_at","error":"<url> closes in 5m (maximum tunnel lifetime of 2h)"}`, and closes with `code: "lifetime"`. The CLI shows "closes at 18:30 (in 2h)" under each tunnel; `--restart-on-expiry` (config `restart_on_expiry: true`) binds the tunnel again right after the close, so it keeps its hostname with a short interruption. `tund status` and `GET /tunnels` (`expires_at`, null when unlimited) show the closing time. The dashboard shows "closes in …" on the user's own online tunnels.
 * Per-user overrides: `users.bandwidth_kbps`, `users.transfer_quota_gb` (NULL = default, 0 = unlimited). Admins are unlimited unless an override is set.
 
 Metering wraps the tunnel data streams, so it counts everything that passes through a tunnel (HTTP headers + bodies, WebSockets, SSE, TCP, TLS). Nodes aggregate in memory and upsert `usage_daily` every 15 s; request/connection counts are added too. Each node re-reads the month's usage per active account every 60 s (multi-node accuracy is eventually consistent).

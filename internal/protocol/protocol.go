@@ -49,6 +49,10 @@ const (
 	TypeNotice = "notice"
 )
 
+// CodeLifetime marks a tunnel closed (or about to be closed) because it
+// reached the maximum tunnel lifetime; the client may bind it again.
+const CodeLifetime = "lifetime"
+
 // Tunnel protocols.
 const (
 	ProtoHTTP = "http" // default: HTTP(S) terminated at the edge, requests inspected
@@ -86,6 +90,9 @@ type Message struct {
 	// (skippable with the Tund-Skip-Browser-Warning request header).
 	BrowserWarning bool   `json:"browser_warning,omitempty"`
 	Warning        string `json:"warning,omitempty"` // bound, but something asked for did not happen (e.g. pin limit)
+	// ExpiresAt: the server closes the tunnel at this time (maximum tunnel
+	// lifetime). Also set on the notice that announces it.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 
 	// request
 	Request *RequestEvent `json:"request,omitempty"`
@@ -98,6 +105,8 @@ type Message struct {
 
 	// bind_error / closed / error
 	Error string `json:"error,omitempty"`
+	// closed / notice: why, for clients that react to it (CodeLifetime).
+	Code string `json:"code,omitempty"`
 
 	// notice: the newest client release, when this client is older
 	UpdateVersion string `json:"update_version,omitempty"`

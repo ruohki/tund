@@ -71,6 +71,9 @@ type TunnelConfig struct {
 	AllowIPs      []string    `yaml:"allow_ips,omitempty"`
 	TerminateCert string      `yaml:"terminate_cert,omitempty"` // tls
 	TerminateKey  string      `yaml:"terminate_key,omitempty"`  // tls
+	// RestartOnExpiry starts the tunnel again when the server closes it for
+	// reaching its maximum lifetime.
+	RestartOnExpiry bool `yaml:"restart_on_expiry,omitempty"`
 }
 
 // AuthConfig protects a tunnel with a password or an OIDC provider.
@@ -230,6 +233,8 @@ func (t *TunnelConfig) specIn(name, baseDir string) (TunnelSpec, error) {
 		RemotePort:    t.RemotePort,
 		TerminateCert: resolvePath(baseDir, t.TerminateCert),
 		TerminateKey:  resolvePath(baseDir, t.TerminateKey),
+
+		RestartOnExpiry: t.RestartOnExpiry,
 	}
 	if spec.AllowIPs, err = NormalizeAllowIPs(t.AllowIPs); err != nil {
 		return TunnelSpec{}, fmt.Errorf("tunnel %q: %w", name, err)

@@ -182,11 +182,15 @@ func (as *AgentSession) bind(ctx context.Context, m protocol.Message) {
 		return
 	}
 	logf("tunnel %s online: %s -> %s (%s)", t.ID, t.PublicURL, t.LocalAddr, as.Account.Email)
-	as.ctrl.Send(protocol.Message{
+	bound := protocol.Message{
 		Type: protocol.TypeBound, ID: m.ID, TunnelID: t.ID, URL: t.PublicURL,
 		AuthMode: t.Policy().Mode, Static: t.Static, Warning: warning, RemotePort: t.RemotePort,
 		BrowserWarning: t.warn.Load() && t.Policy().Mode == protocol.AuthNone,
-	})
+	}
+	if !t.expiresAt.IsZero() {
+		bound.ExpiresAt = &t.expiresAt
+	}
+	as.ctrl.Send(bound)
 	if t.Proto == protocol.ProtoHTTP {
 		as.srv.certs.Prewarm(t.Hostname)
 	}
@@ -403,11 +407,15 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		go s.serveTCP(t)
 	}
 	if max, err := s.tunnelLifetime(ctx, acct.UserID); err == nil && max > 0 {
-		note := "this server closes tunnels after " + formatLifetime(max)
-		if warning != "" {
-			note = warning + "; " + note
+		t.expiresAt = t.StartedAt.Add(max)
+		if protocol.NewerVersion(expiryClientVersion, as.ClientVersion) {
+			// Older clients ignore ExpiresAt; tell them in words.
+			note := "this server closes tunnels after " + formatLifetime(max)
+			if warning != "" {
+				note = warning + "; " + note
+			}
+			warning = note
 		}
-		warning = note
 	}
 	s.store.Notify(ctx, "tund_tunnels", tunnelEvent(t, s.cfg.NodeName(), "online"))
 	return t, warning, nil
@@ -808,7 +816,12 @@ func (as *AgentSession) openStreamFor(ctx context.Context, bindID, remote string
 	return st, nil
 }
 
-func (as *AgentSession) unbind(bindID, reason string) {
+func (as *AgentSession) unbind(bindID, reason string) { as.unbindCode(bindID, reason, "") }
+
+// unbindCode closes a tunnel and, with a reason, tells the client why. The
+// hostname is released first, so a client that binds again right away (see
+// protocol.CodeLifetime) gets it back.
+func (as *AgentSession) unbindCode(bindID, reason, code string) {
 	as.mu.Lock()
 	t := as.tunnels[bindID]
 	delete(as.tunnels, bindID)
@@ -816,10 +829,10 @@ func (as *AgentSession) unbind(bindID, reason string) {
 	if t == nil {
 		return
 	}
-	if reason != "" {
-		as.ctrl.Send(protocol.Message{Type: protocol.TypeClosed, ID: bindID, Error: reason})
-	}
 	as.srv.teardown(t)
+	if reason != "" {
+		as.ctrl.Send(protocol.Message{Type: protocol.TypeClosed, ID: bindID, Error: reason, Code: code})
+	}
 }
 
 func (as *AgentSession) close(reason string) {

@@ -84,6 +84,8 @@ When a newer release is out, `tund http` shows an *Update* line (older clients p
 | `tund http 3000 --password s3cret` | visitors must enter a password; scripts can use `curl -u :s3cret` |
 | `tund http 3000 --oidc google --oidc-allow @company.com` | visitors sign in with an OIDC provider configured in the dashboard |
 | `tund start --all` | start every tunnel defined in `tund.yml` |
+| `tund status` | your online tunnels on every machine: URL, local address, machine, uptime, when they close |
+| `tund http 3000 --restart-on-expiry` | start the tunnel again when the server closes it for reaching its maximum lifetime |
 
 `tund config path` shows where the config file lives (`~/.config/tund/tund.yml`, `%AppData%\tund\tund.yml` on Windows):
 

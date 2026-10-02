@@ -23,6 +23,7 @@ type observer interface {
 	TunnelOnline(t tunnelView)
 	TunnelFailed(t tunnelView)
 	TunnelClosed(t tunnelView)
+	TunnelRestarting(t tunnelView)
 	Request(t tunnelView, ev protocol.RequestEvent)
 	Connection(t tunnelView, ev protocol.ConnEvent)
 }
@@ -36,6 +37,7 @@ const (
 	EventBound        EventKind = "bound"        // tunnel online (again, after a reconnect)
 	EventFailed       EventKind = "failed"       // the server refused the tunnel (Error)
 	EventClosed       EventKind = "closed"       // stopped from the dashboard / API (Error)
+	EventRestarting   EventKind = "restarting"   // maximum lifetime reached, binding again (RestartOnExpiry)
 	EventRequest      EventKind = "request"      // a request went through (Request)
 	EventConnection   EventKind = "connection"   // a tcp/tls connection finished (Conn)
 	EventReconnecting EventKind = "reconnecting" // connection lost (Error, Delay)
@@ -66,6 +68,9 @@ type Event struct {
 	// Proto and RemotePort describe tcp/tls tunnels.
 	Proto      string
 	RemotePort int
+	// ExpiresAt: the server closes the tunnel then (maximum tunnel
+	// lifetime); zero when there is no limit.
+	ExpiresAt time.Time
 }
 
 type eventObserver struct{ fn func(Event) }
@@ -73,7 +78,7 @@ type eventObserver struct{ fn func(Event) }
 func (o eventObserver) tunnelEvent(kind EventKind, t tunnelView) Event {
 	return Event{Kind: kind, Tunnel: t.Name, TunnelID: t.TunnelID, URL: t.URL, Hostname: t.Host, LocalAddr: t.Local,
 		AuthMode: t.AuthMode, Static: t.Static, Warning: t.Warning, Error: t.Err, BrowserWarning: t.BrowserWarning,
-		Proto: t.Proto, RemotePort: t.RemotePort}
+		Proto: t.Proto, RemotePort: t.RemotePort, ExpiresAt: t.ExpiresAt}
 }
 
 func (o eventObserver) setTunnelNames([]string) {}
@@ -95,6 +100,9 @@ func (o eventObserver) Warn(msg string)           { o.fn(Event{Kind: EventWarnin
 func (o eventObserver) TunnelOnline(t tunnelView) { o.fn(o.tunnelEvent(EventBound, t)) }
 func (o eventObserver) TunnelFailed(t tunnelView) { o.fn(o.tunnelEvent(EventFailed, t)) }
 func (o eventObserver) TunnelClosed(t tunnelView) { o.fn(o.tunnelEvent(EventClosed, t)) }
+func (o eventObserver) TunnelRestarting(t tunnelView) {
+	o.fn(o.tunnelEvent(EventRestarting, t))
+}
 func (o eventObserver) UpdateAvailable(v string) {
 	o.Warn("tund " + v + " is available (this is " + Version + "); update with: tund update")
 }
@@ -152,6 +160,7 @@ type TunnelInfo struct {
 	RemotePort     int
 	LastRequestAt  time.Time
 	StartedAt      time.Time
+	ExpiresAt      time.Time // the server closes the tunnel then; zero = no maximum lifetime
 }
 
 // TunnelOptions configure StartTunnel.
@@ -236,7 +245,9 @@ func (t *Tunnel) handle(e Event) {
 		in.State, in.TunnelID, in.URL, in.Hostname = StateOnline, e.TunnelID, e.URL, e.Hostname
 		in.AuthMode, in.Static, in.Warning, in.Error = e.AuthMode, e.Static, e.Warning, ""
 		in.BrowserWarning = e.BrowserWarning
-		in.RemotePort = e.RemotePort
+		in.RemotePort, in.ExpiresAt = e.RemotePort, e.ExpiresAt
+	case EventRestarting:
+		in.State = StateReconnecting
 	case EventFailed:
 		in.State, in.Error = StateFailed, e.Error
 	case EventClosed:

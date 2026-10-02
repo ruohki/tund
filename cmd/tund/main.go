@@ -114,7 +114,7 @@ Default server: ` + orNone(client.DefaultServer),
 	root.PersistentFlags().StringVar(&g.configPath, "config", "", "config file (default: "+defaultPathHint()+")")
 	root.PersistentFlags().BoolVar(&g.logMode, "log", false, "print plain log lines instead of the interactive view")
 
-	root.AddCommand(newHTTPCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newUpdateCmd(g), newVersionCmd(g))
+	root.AddCommand(newHTTPCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newStatusCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newUpdateCmd(g), newVersionCmd(g))
 	return root
 }
 
@@ -129,7 +129,7 @@ func newHTTPCmd(g *globals) *cobra.Command {
 	var (
 		name, subdomain, domain, hostHeader, password, oidc string
 		allow, allowIPs                                     []string
-		pin, random                                         bool
+		pin, random, restart                                bool
 	)
 	cmd := &cobra.Command{
 		Use:   "http <port | host:port | url>",
@@ -186,6 +186,8 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 				Pin:        pin,
 				Random:     random,
 				AllowIPs:   allowIPs,
+
+				RestartOnExpiry: restart,
 			}
 			return runSpec(g, spec)
 		},
@@ -201,6 +203,7 @@ X-Tund-* headers sent by visitors, so your app can trust them.`,
 	f.StringVar(&oidc, "oidc", "", "protect the URL with an OIDC provider from the dashboard: <provider> or <team>/<provider>")
 	f.StringSliceVar(&allow, "oidc-allow", nil, "who may pass OIDC: emails (a@b.com), domains (@b.com) or groups (group:admins); repeatable or comma separated")
 	addAllowIPFlag(f, &allowIPs)
+	addRestartFlag(f, &restart)
 	return cmd
 }
 
@@ -213,7 +216,7 @@ func defaultName(local string) string {
 }
 
 func newStartCmd(g *globals) *cobra.Command {
-	var all bool
+	var all, restart bool
 	cmd := &cobra.Command{
 		Use:   "start [name ...]",
 		Short: "Start tunnels defined in the config file",
@@ -230,6 +233,7 @@ Example config:
     preview:
       addr: 5173
       random: true         # one-off URL, not your static one
+      restart_on_expiry: true   # start again after the server's maximum lifetime
     api:
       addr: https://localhost:8443
       domain: api.example.com
@@ -280,12 +284,14 @@ Example config:
 				if err != nil {
 					return err
 				}
+				spec.RestartOnExpiry = spec.RestartOnExpiry || restart
 				specs = append(specs, spec)
 			}
 			return runTunnels(g, cfg, p, specs)
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "start every tunnel in the config file")
+	addRestartFlag(cmd.Flags(), &restart)
 	return cmd
 }
 

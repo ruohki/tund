@@ -94,6 +94,8 @@ type Tunnel struct {
 	warn         atomic.Bool    // browser visitors get the warning page (see warning.go)
 	ownerTrusted atomic.Bool    // owner is an admin or trusted: never warn
 	session      *AgentSession
+	expiresAt    time.Time   // maximum lifetime at bind time; zero = unlimited
+	expiryNoted  atomic.Bool // the client was told the tunnel closes soon
 
 	transport *http.Transport
 	proxy     *httputil.ReverseProxy

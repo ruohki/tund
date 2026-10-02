@@ -136,12 +136,22 @@ func (s *Server) apiTunnels(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, err)
 		return
 	}
+	lifetime, err := s.tunnelLifetime(r.Context(), acct.UserID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
 	out := []map[string]any{}
 	for _, t := range rows {
+		var expires *time.Time
+		if lifetime > 0 {
+			e := t.StartedAt.Add(lifetime)
+			expires = &e
+		}
 		out = append(out, map[string]any{
 			"id": t.ID, "name": t.Name, "proto": t.Proto, "remote_port": t.RemotePort,
 			"hostname": t.Hostname, "url": t.PublicURL, "local_addr": t.LocalAddr,
-			"auth_mode": t.AuthMode, "static": t.Static, "started_at": t.StartedAt, "node": t.Node,
+			"auth_mode": t.AuthMode, "static": t.Static, "started_at": t.StartedAt, "expires_at": expires, "node": t.Node,
 			"client": map[string]any{"hostname": t.ClientHostname, "os": t.ClientOS, "version": t.ClientVersion},
 		})
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"tund/internal/protocol"
 )
 
 // Tunnels can have a maximum lifetime: the setting limit_tunnel_lifetime
@@ -11,7 +13,12 @@ import (
 // users.tunnel_lifetime_minutes. Each node closes its own tunnels once they
 // are older than that; the client can start them again.
 
-const lifetimeSweep = 15 * time.Second
+const (
+	lifetimeSweep  = 15 * time.Second
+	lifetimeNotice = 5 * time.Minute // tell the client this long before closing
+	// expiryClientVersion is the first client that shows protocol.Message.ExpiresAt.
+	expiryClientVersion = "0.5.0"
+)
 
 func effectiveLifetime(globalMinutes int, isAdmin bool, override *int) time.Duration {
 	m := globalMinutes
@@ -63,8 +70,18 @@ func (s *Server) enforceLifetimes(ctx context.Context) {
 			}
 			limits[t.UserID] = max
 		}
-		if max > 0 && now.Sub(t.StartedAt) >= max {
-			t.session.unbind(t.BindID, fmt.Sprintf("this tunnel reached the maximum lifetime of %s on this server; start it again", formatLifetime(max)))
+		if max <= 0 {
+			continue
+		}
+		end := t.StartedAt.Add(max)
+		switch left := end.Sub(now); {
+		case left <= 0:
+			t.session.unbindCode(t.BindID, fmt.Sprintf("this tunnel reached the maximum lifetime of %s on this server; start it again", formatLifetime(max)), protocol.CodeLifetime)
+		case left <= lifetimeNotice && t.expiryNoted.CompareAndSwap(false, true):
+			t.session.ctrl.Send(protocol.Message{
+				Type: protocol.TypeNotice, ID: t.BindID, Code: protocol.CodeLifetime, ExpiresAt: &end,
+				Error: fmt.Sprintf("%s closes in %s (maximum tunnel lifetime of %s)", t.PublicURL, formatLeft(left), formatLifetime(max)),
+			})
 		}
 	}
 }
@@ -81,4 +98,9 @@ func formatLifetime(d time.Duration) string {
 		return fmt.Sprintf("%dh%dm", m/60, m%60)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+// formatLeft rounds a remaining time up to whole minutes: "5m", "1m".
+func formatLeft(d time.Duration) string {
+	return formatLifetime(max(time.Minute, (d + time.Minute - 1).Truncate(time.Minute)))
 }
