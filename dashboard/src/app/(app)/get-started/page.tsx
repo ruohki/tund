@@ -11,7 +11,8 @@ import { verificationRequired } from "@/lib/mail";
 import { ButtonLink, PageHeader, Panel } from "@/components/ui";
 import { Command } from "@/components/client-ui";
 import { InstallSteps } from "@/components/install-steps";
-import { IDENTITY_EXAMPLE, IdentityHeaderTable } from "@/components/identity-headers";
+import { IdentityHeaderTable } from "@/components/identity-headers";
+import { IdentityExamples } from "@/components/identity-examples";
 import { ApiSection, McpSection } from "./agents";
 
 export const metadata: Metadata = { title: "Get started" };
@@ -218,9 +219,7 @@ export default async function GetStartedPage() {
           bodyClassName="flex flex-col gap-3 p-4 text-[13px] text-ink-2"
         >
           <IdentityHeaderTable />
-          <pre className="overflow-x-auto scroll-thin rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-5 text-ink">
-            {IDENTITY_EXAMPLE}
-          </pre>
+          <IdentityExamples />
           <p>
             tund removes every <code className="font-mono text-[12.5px] text-ink">X-Tund-*</code> header a visitor sends,
             on every tunnel, so these can&apos;t be spoofed on requests that arrive through {brand}. Claims the provider

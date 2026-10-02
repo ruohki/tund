@@ -36,6 +36,7 @@
   --syn-str: #1b7a4f;
   --syn-num: #2463b0;
   --syn-lit: #a13d85;
+  --syn-kw: #b4461f;
   --term-bg: #16191e;
   --term-line: #262b33;
   --term-ink: #e3e6ea;
@@ -76,6 +77,7 @@
     --syn-str: #7cc89c;
     --syn-num: #8cb6ef;
     --syn-lit: #d993c8;
+  --syn-kw: #f2a477;
     --term-bg: #0b0d10;
     --term-line: #232932;
     --term-ink: #e3e6ea;
@@ -116,6 +118,7 @@
   --syn-str: #7cc89c;
   --syn-num: #8cb6ef;
   --syn-lit: #d993c8;
+  --syn-kw: #f2a477;
   --term-bg: #0b0d10;
   --term-line: #232932;
   --term-ink: #e3e6ea;

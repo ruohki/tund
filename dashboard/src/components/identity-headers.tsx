@@ -23,11 +23,3 @@ export function IdentityHeaderTable() {
     </dl>
   );
 }
-
-export const IDENTITY_EXAMPLE = `// Express: tund sets these after the visitor signed in
-app.get("/admin", (req, res) => {
-  const email = req.get("X-Tund-User-Email");
-  const groups = (req.get("X-Tund-User-Groups") ?? "").split(",");
-  if (!groups.includes("admins")) return res.status(403).send("Admins only");
-  res.send(\`Hello \${email}\`);
-});`;

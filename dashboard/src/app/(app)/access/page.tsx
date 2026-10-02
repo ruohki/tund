@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
-import { IDENTITY_EXAMPLE, IdentityHeaderTable } from "@/components/identity-headers";
+import { IdentityHeaderTable } from "@/components/identity-headers";
+import { IdentityExamples } from "@/components/identity-examples";
 import { requireUser } from "@/lib/auth";
 import { publicConfig } from "@/lib/config";
 import { siteInfo } from "@/lib/seo";
@@ -160,9 +161,7 @@ export default async function AccessPage() {
         <div className="grid grid-cols-1 gap-6 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <IdentityHeaderTable />
           <div className="flex flex-col gap-3 text-[13px] text-ink-2">
-            <pre className="overflow-x-auto scroll-thin rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-5 text-ink">
-              {IDENTITY_EXAMPLE}
-            </pre>
+            <IdentityExamples />
             <p>
               Claims your provider doesn&apos;t send are left out. Name and username need the{" "}
               <code className="font-mono text-[12.5px] text-ink">profile</code> scope; for groups many providers need a{" "}
