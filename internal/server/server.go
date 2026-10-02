@@ -365,7 +365,9 @@ func (s *Server) onConfigChange(payload string) {
 		}
 		if !s.certs.underBase(t.Hostname) && (d == nil || !d.Verified || d.Approval != "approved") {
 			reason := "the domain " + t.Hostname + " was removed from your account"
-			if t.TeamID != "" {
+			if d != nil && !d.Verified {
+				reason = "the domain " + t.Hostname + " lost its verification: its _tund-challenge TXT record is gone or changed; restore it and verify the domain again in the dashboard"
+			} else if t.TeamID != "" {
 				reason = "you can no longer use " + t.Hostname + " (it left your team, or you left the team)"
 			}
 			t.session.unbind(t.BindID, reason)
@@ -424,6 +426,7 @@ func (s *Server) Run(ctx context.Context) error {
 	go s.latestClientLoop(bg)
 	go s.meterLoop(bg)
 	go s.lifetimeLoop(bg)
+	go s.domainCheckLoop(bg)
 	go s.safeBrowsingLoop(bg)
 	go s.phishLoop(bg)
 	go func() {

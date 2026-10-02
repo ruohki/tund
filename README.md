@@ -190,7 +190,7 @@ Custom domains are off by default. Turn them on for everyone under *Admin → Se
 
 TCP and TLS passthrough tunnels (`tund tcp`, `tund tls`) work the same way. They are off by default; turn them on for everyone under *Admin → Settings* (*TCP and TLS tunnels*, env default `TUND_PASSTHROUGH`), or per account under *Admin → Users*. The per-account choice wins, and admins have them unless set to *Off*. Turning them off ends the affected tunnels right away. The settings for non-trusted accounts (`untrusted_tcp`, `untrusted_tls`) still apply on top.
 
-Add the domain in the dashboard. Create the TXT record it shows (`_tund-challenge.<domain>`) and point the domain at the instance with a CNAME to the dashboard host. That is recommended: with several nodes it reaches all of them, including nodes added later. Only where a CNAME isn't allowed (a zone apex), use the A records the dashboard lists, one per node. Then click *Verify*. Wildcards like `*.dev.example.com` let the client use any `<name>.dev.example.com`.
+Add the domain in the dashboard. Create the TXT record it shows (`_tund-challenge.<domain>`) and point the domain at the instance with a CNAME to the dashboard host. That is recommended: with several nodes it reaches all of them, including nodes added later. Only where a CNAME isn't allowed (a zone apex), use the A records the dashboard lists, one per node. Then click *Verify*. Keep the TXT record: the server re-checks it every hour, and if it stays gone or changes (three checks over about 20 minutes), the domain loses its verification, its tunnels stop, and the owner gets an email. Wildcards like `*.dev.example.com` let the client use any `<name>.dev.example.com`.
 
 ## Edge nodes (global)
 

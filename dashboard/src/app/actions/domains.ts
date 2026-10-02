@@ -175,7 +175,10 @@ export async function verifyDomainAction(id: string): Promise<VerifyResult> {
   ]);
   if (txt.found) {
     if (!d.verified_at) {
-      await db()`update domains set verified_at = now() where id = ${id}`;
+      await db()`
+        update domains set verified_at = now(), checked_at = now(), check_failures = 0,
+          unverified_at = null, unverified_reason = '', unverified_notified_at = null
+        where id = ${id}`;
       await changed(id, owner);
     }
     refresh();

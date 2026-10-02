@@ -25,7 +25,11 @@ async function flush(state: State) {
     if (!(await smtpConfigured())) return;
     const sql = db();
     const [reports, admins, [{ open }], s] = await Promise.all([
-      sql`select id, hostname, category, source, details from abuse_reports where id in ${sql(ids)} order by created_at`,
+      // Every dashboard hears the notification; the one that sets notified_at sends.
+      sql`update abuse_reports set notified_at = now() where id in ${sql(ids)} and notified_at is null
+          returning id, hostname, category, source, details, created_at`.then((rows) =>
+        [...rows].sort((a, b) => +new Date(a.created_at as Date) - +new Date(b.created_at as Date)),
+      ),
       sql`select email from users where is_admin and disabled_at is null`,
       sql`select count(*)::int as open from abuse_reports where status = 'open'`,
       getSettings(),

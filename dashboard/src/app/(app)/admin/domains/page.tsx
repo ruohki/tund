@@ -26,6 +26,7 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
   const [rows, pending, [counts]] = await Promise.all([
     sql`
       select d.id, d.hostname, d.kind, d.verified_at, d.auth_mode, d.is_default, d.created_at, d.approval,
+        d.unverified_at, d.unverified_reason,
         u.id as user_id, u.email, t.slug as team_slug,
         exists(select 1 from tunnels x where x.ended_at is null and x.hostname = d.hostname) as online
       from domains d join users u on u.id = d.user_id left join teams t on t.id = d.team_id
@@ -113,7 +114,15 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
                 <td className="px-4 py-2.5">
                   <span className="flex flex-wrap gap-1.5">
                     <Badge tone="outline">{d.kind === "custom" ? "Custom" : "Static"}</Badge>
-                    {d.kind === "custom" && !d.verified_at ? <Badge tone="live">Unverified</Badge> : null}
+                    {d.kind === "custom" && !d.verified_at ? (
+                      d.unverified_at ? (
+                        <Badge tone="danger" title={`Withdrawn ${timeAgo(d.unverified_at)}: ${d.unverified_reason}`}>
+                          Verification lost
+                        </Badge>
+                      ) : (
+                        <Badge tone="live">Unverified</Badge>
+                      )
+                    ) : null}
                     {d.kind === "custom" && d.approval !== "approved" ? <ApprovalBadge approval={d.approval} /> : null}
                     {d.is_default ? <Badge>Default</Badge> : null}
                   </span>

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { timeAgo } from "./format";
 import type { DomainItem } from "@/app/(app)/domains/domain-forms";
 
 /** Domains shown on /domains (personal, teamId null) or on a team page (that team's domains). */
@@ -31,6 +32,9 @@ export async function loadDomainItems(userId: string, teamId: string | null): Pr
     createdAt: (r.created_at as Date).toISOString(),
     approval: r.approval ?? "approved",
     reviewReason: (r.risk?.review?.reason as string | undefined) ?? "",
+    lostReason: r.verified_at ? "" : ((r.unverified_reason as string | null) ?? ""),
+    lostAgo: r.unverified_at ? timeAgo(r.unverified_at as Date) : "",
+    checkedAgo: r.checked_at ? timeAgo(r.checked_at as Date) : "",
   }));
 }
 

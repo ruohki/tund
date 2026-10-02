@@ -37,6 +37,11 @@ export type DomainItem = {
   /** Custom domains of non-trusted accounts may need an admin's approval. */
   approval: "approved" | "pending" | "rejected";
   reviewReason: string;
+  /** Why the server withdrew the verification (the TXT record went away or changed); "" if it didn't. */
+  lostReason: string;
+  /** "3h ago": when it was withdrawn, and when the record was last confirmed (formatted on the server). */
+  lostAgo: string;
+  checkedAgo: string;
 };
 
 /** A provider the domain may use; `ref` is how the CLI names it (slug, or team/slug). */
@@ -166,7 +171,7 @@ function DnsRecords({ domain, cfg }: { domain: DomainItem; cfg: PublicConfig }) 
       type: "TXT",
       name: `_tund-challenge.${bare}`,
       value: `tund-verify=${domain.token}`,
-      note: "Proves the domain is yours.",
+      note: "Proves the domain is yours. Keep it: the server re-checks it, and the domain stops working if it goes away.",
     },
   ];
   const ips = cfg.serverIps ?? (cfg.serverIp ? [cfg.serverIp] : []);
@@ -385,9 +390,14 @@ export function DomainRow({
           ) : null}
           {domain.kind === "custom" ? (
             domain.verified ? (
-              <Badge tone="ok">
+              <Badge
+                tone="ok"
+                title={`The server keeps checking the TXT record; last confirmed ${domain.checkedAgo || "at verification"}.`}
+              >
                 <ShieldCheck size={12} /> Verified
               </Badge>
+            ) : domain.lostReason ? (
+              <Badge tone="danger">Verification lost</Badge>
             ) : (
               <Badge tone="live">Waiting for DNS</Badge>
             )
@@ -483,6 +493,12 @@ export function DomainRow({
       ) : domain.approval === "rejected" ? (
         <p className="mt-2 text-[12.5px] text-danger">
           An administrator rejected this domain{domain.reviewReason ? `: ${domain.reviewReason}` : "."} Tunnels can&apos;t use it.
+        </p>
+      ) : null}
+      {domain.kind === "custom" && !domain.verified && domain.lostReason ? (
+        <p className="mt-2 text-[12.5px] text-danger">
+          Verification withdrawn {domain.lostAgo}: {domain.lostReason}. Tunnels can&apos;t use the domain until the record is
+          back and you verify it again.
         </p>
       ) : null}
       {domain.verified ? <Command className="mt-2.5 max-w-xl">{usage}</Command> : null}

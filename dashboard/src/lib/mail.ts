@@ -171,6 +171,21 @@ export function abuseReportsEmail(instance: string, reports: ReportLine[], openC
   };
 }
 
+export function domainVerificationLostEmail(instance: string, hostname: string, reason: string, url: string): Mail {
+  return {
+    subject: `${hostname} is no longer verified on ${instance}`,
+    ...render(instance, {
+      heading: "Domain verification withdrawn",
+      paragraphs: [
+        `${esc(instance)} keeps checking that your custom domain <span style="font-family:ui-monospace,Menlo,monospace">${esc(hostname)}</span> still belongs to you. The check failed several times in a row: ${esc(reason)}.`,
+        "Its tunnels were stopped and it can't be used until the record is back. If you still own the domain, restore the TXT record shown in the dashboard and verify the domain again.",
+      ],
+      action: { label: "Open your domains", url },
+      footer: `You get this because you added ${esc(hostname)} to ${esc(instance)}.`,
+    }),
+  };
+}
+
 export function testEmail(instance: string, dashboardUrl: string): Mail {
   return {
     subject: `Test email from ${instance}`,
