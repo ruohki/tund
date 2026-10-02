@@ -10,6 +10,7 @@ import { useLiveEvents } from "../live";
 import { useDisplayTimeZone } from "@/lib/use-hydrated";
 import { RequestDetail } from "./request-detail";
 import { clearRequestsAction, replayRequestAction } from "@/app/actions/requests";
+import { useInfiniteScroll } from "@/components/use-infinite-scroll";
 
 type Filters = { host: string; method: string; status: string; q: string };
 
@@ -185,6 +186,8 @@ export function Inspector({
     setItems((list) => [...list, ...data.items.filter((d) => !list.some((x) => x.id === d.id))]);
     setHasMore(data.hasMore);
   };
+  // Older requests load as the list scrolls; the button stays as a fallback.
+  const moreRef = useInfiniteScroll(hasMore, items.length, loadMore);
 
   const replay = () => {
     if (!detail) return;
@@ -326,6 +329,7 @@ export function Inspector({
           tabIndex={0}
           onKeyDown={onListKey}
           aria-label="Captured requests"
+          data-scroll-root
           className={cn(
             "min-h-0 overflow-y-auto scroll-thin outline-none lg:w-[44%] lg:min-w-[380px] lg:border-r lg:border-line",
             selectedId ? "hidden w-full lg:block" : "w-full",
@@ -391,7 +395,7 @@ export function Inspector({
             })}
           </ul>
           {hasMore ? (
-            <div className="p-3 text-center">
+            <div ref={moreRef} className="p-3 text-center">
               <button type="button" onClick={loadMore} className={buttonClass("secondary", "sm")}>
                 Load older requests
               </button>

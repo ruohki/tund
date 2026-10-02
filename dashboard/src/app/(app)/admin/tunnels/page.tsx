@@ -4,12 +4,16 @@ import { Cable } from "lucide-react";
 import { db } from "@/lib/db";
 import { formatDateTime, formatNumber, osLabel, sessionLength } from "@/lib/format";
 import { AuthBadge, EmptyState, Panel, ProtoBadge } from "@/components/ui";
+import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
 import { StopTunnelForm } from "../admin-forms";
 
 export const metadata: Metadata = { title: "All tunnels" };
 
-export default async function AdminTunnelsPage() {
-  const rows = await db()`
+export default async function AdminTunnelsPage({ searchParams }: PageProps<"/admin/tunnels">) {
+  const page = pageParam((await searchParams).page);
+  const [[{ total }], rows] = await Promise.all([
+    db()`select count(*)::int as total from tunnels where ended_at is null`,
+    db()`
     select t.id, t.name, t.hostname, t.public_url, t.local_addr, t.auth_mode, t.started_at, t.proto,
       u.id as user_id, u.email, a.hostname as client_host, a.client_os, a.client_version, a.remote_addr,
       case when t.proto = 'http' then (select count(*)::int from requests r where r.tunnel_id = t.id)
@@ -17,11 +21,12 @@ export default async function AdminTunnelsPage() {
     from tunnels t join users u on u.id = t.user_id join agent_sessions a on a.id = t.agent_session_id
     where t.ended_at is null
     order by t.started_at desc
-    limit 500`;
+    limit ${PAGE_SIZE} offset ${pageOffset(page)}`,
+  ]);
   return (
     <Panel
       title="Online tunnels"
-      description={`${rows.length} across all accounts. Stopping one closes it on the client, which sees your reason.`}
+      description={`${formatNumber(total)} across all accounts. Stopping one closes it on the client, which sees your reason.`}
     >
       {rows.length ? (
         <div className="overflow-x-auto scroll-thin">
@@ -84,6 +89,7 @@ export default async function AdminTunnelsPage() {
       ) : (
         <EmptyState icon={<Cable size={22} />} title="No tunnel is online" />
       )}
+      <Pager path="/admin/tunnels" page={page} total={total as number} />
     </Panel>
   );
 }

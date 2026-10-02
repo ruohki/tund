@@ -109,13 +109,23 @@ export type TunnelRow = {
   client: { hostname: string; os: string; version: string; remoteAddr: string };
 };
 
+/** How many tunnels listTunnels would return without a limit. */
+export async function countTunnels(userId: string, opts: { online?: boolean; includeTeams?: boolean } = {}): Promise<number> {
+  const sql = db();
+  const [r] = await sql`
+    select count(*)::int as n from tunnels t
+    where ${opts.includeTeams ? sql`(t.user_id = ${userId} or ${teamHostnameMatch(sql, "t.hostname", userId)})` : sql`t.user_id = ${userId}`}
+      ${opts.online === true ? sql`and t.ended_at is null` : opts.online === false ? sql`and t.ended_at is not null` : sql``}`;
+  return r.n as number;
+}
+
 /**
  * The user's tunnels. With `includeTeams`, also tunnels of other members on
  * domains owned by the user's teams (docs/SPEC.md "Traffic visibility").
  */
 export async function listTunnels(
   userId: string,
-  opts: { online?: boolean; limit?: number; includeTeams?: boolean } = {},
+  opts: { online?: boolean; limit?: number; offset?: number; includeTeams?: boolean } = {},
 ): Promise<TunnelRow[]> {
   const sql = db();
   const rows = await sql`
@@ -136,7 +146,7 @@ export async function listTunnels(
     where ${opts.includeTeams ? sql`(t.user_id = ${userId} or ${teamHostnameMatch(sql, "t.hostname", userId)})` : sql`t.user_id = ${userId}`}
       ${opts.online === true ? sql`and t.ended_at is null` : opts.online === false ? sql`and t.ended_at is not null` : sql``}
     order by (t.ended_at is null) desc, coalesce(t.ended_at, t.started_at) desc
-    limit ${opts.limit ?? 100}`;
+    limit ${opts.limit ?? 100} offset ${opts.offset ?? 0}`;
   return rows.map((r) => ({
     id: r.id,
     name: r.name,

@@ -6,6 +6,7 @@ import { formatDateTime, formatNumber, formatTransfer, timeAgo } from "@/lib/for
 import { GB } from "@/lib/usage";
 import { getSettings } from "@/lib/settings";
 import { Badge, cn, inputClass, Panel } from "@/components/ui";
+import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
 import { CreateUserForm } from "./create-user";
 
 export const metadata: Metadata = { title: "Users" };
@@ -22,9 +23,16 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
   const filter = typeof sp.filter === "string" ? sp.filter : "";
+  const page = pageParam(sp.page);
   const sql = db();
   const like = `%${q.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
-  const users = await sql`
+  const where = sql`
+    where true
+      ${q ? sql`and (u.email ilike ${like} or u.name ilike ${like})` : sql``}
+      ${filter === "admin" ? sql`and u.is_admin` : filter === "disabled" ? sql`and u.disabled_at is not null` : filter === "unverified" ? sql`and u.email_verified_at is null` : filter === "flagged" ? sql`and u.flagged_at is not null` : sql``}`;
+  const [[{ total }], users] = await Promise.all([
+    sql`select count(*)::int as total from users u ${where}`,
+    sql`
     select u.id, u.email, u.name, u.is_admin, u.trusted, u.disabled_at, u.email_verified_at, u.created_at,
       u.transfer_quota_gb, u.flagged_at, u.flag_reason,
       (select coalesce(sum(d.bytes_in + d.bytes_out), 0)::bigint from usage_daily d
@@ -32,12 +40,10 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
       (select count(*) from tunnels t where t.user_id = u.id and t.ended_at is null)::int as online,
       (select count(*) from requests r where r.user_id = u.id and r.started_at > now() - interval '24 hours')::int as req24,
       (select max(connected_at) from agent_sessions a where a.user_id = u.id) as last_connected
-    from users u
-    where true
-      ${q ? sql`and (u.email ilike ${like} or u.name ilike ${like})` : sql``}
-      ${filter === "admin" ? sql`and u.is_admin` : filter === "disabled" ? sql`and u.disabled_at is not null` : filter === "unverified" ? sql`and u.email_verified_at is null` : filter === "flagged" ? sql`and u.flagged_at is not null` : sql``}
+    from users u ${where}
     order by u.created_at desc
-    limit 500`;
+    limit ${PAGE_SIZE} offset ${pageOffset(page)}`,
+  ]);
   const settings = await getSettings();
   const mode = settings.signup_mode;
   const quotaOf = (u: Record<string, unknown>) =>
@@ -79,7 +85,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
             ))}
           </div>
           <span className="ml-auto text-[12.5px] text-muted tabular">
-            {users.length} {users.length === 1 ? "account" : "accounts"}
+            {formatNumber(total)} {total === 1 ? "account" : "accounts"}
           </span>
         </form>
         <div className="overflow-x-auto scroll-thin">
@@ -142,6 +148,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
           </table>
           {!users.length ? <p className="px-4 py-6 text-[13px] text-muted">No accounts match.</p> : null}
         </div>
+        <Pager path="/admin/users" params={{ q, filter }} page={page} total={total as number} />
       </Panel>
       <Panel title="Add a user" bodyClassName="p-4">
         <CreateUserForm />

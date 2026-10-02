@@ -8,6 +8,7 @@ import { useDisplayTimeZone } from "@/lib/use-hydrated";
 import { buttonClass, cn, Select } from "../ui";
 import { useLiveEvents } from "../live";
 import { clearConnectionsAction } from "@/app/actions/requests";
+import { useInfiniteScroll } from "@/components/use-infinite-scroll";
 
 
 /** TCP/TLS connections: the inspector view for raw tunnels (docs/SPEC.md "Connection records"). */
@@ -86,6 +87,8 @@ export function ConnectionsView({
     setItems((list) => [...list, ...d.items.filter((x) => !list.some((y) => y.id === x.id))]);
     setHasMore(d.hasMore);
   };
+  // Older connections load as the list scrolls; the button stays as a fallback.
+  const moreRef = useInfiniteScroll(hasMore, items.length, loadMore);
 
   const clear = async () => {
     if (!confirmClear) {
@@ -129,7 +132,7 @@ export function ConnectionsView({
           {confirmClear ? "Delete these?" : "Clear"}
         </button>
       </div>
-      <div className={cn("min-h-0 flex-1 overflow-auto scroll-thin", loading && items.length > 0 && "opacity-60")}>
+      <div data-scroll-root className={cn("min-h-0 flex-1 overflow-auto scroll-thin", loading && items.length > 0 && "opacity-60")}>
         {error ? (
           <p className="m-3 rounded-[5px] border border-danger/30 bg-danger-wash px-3 py-2 text-[13px] text-danger">
             Couldn&apos;t load connections: {error}
@@ -197,7 +200,7 @@ export function ConnectionsView({
           </table>
         ) : null}
         {hasMore ? (
-          <div className="p-3 text-center">
+          <div ref={moreRef} className="p-3 text-center">
             <button type="button" onClick={loadMore} className={buttonClass("secondary", "sm")}>
               Load older connections
             </button>

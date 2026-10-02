@@ -8,6 +8,7 @@ import { ConfirmSubmit } from "@/components/client-ui";
 import { unblockHostAction } from "@/app/actions/abuse";
 import { BlockHostForm } from "./abuse-forms";
 import { StatusBadge } from "./status-badge";
+import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
 
 export const metadata: Metadata = { title: "Abuse" };
 
@@ -23,7 +24,14 @@ export default async function AbusePage({ searchParams }: PageProps<"/admin/abus
   const status = STATUSES.some((s) => s.id === sp.status) ? (sp.status as string) : "open";
   const source = REPORT_SOURCES.some((s) => s.value === sp.source) ? (sp.source as string) : "";
   const category = REPORT_CATEGORIES.some((c) => c.value === sp.category) ? (sp.category as string) : "";
+  const page = pageParam(sp.page);
+  const blockedPage = pageParam(sp.blocked_page);
   const sql = db();
+  const filters = sql`
+      where true
+        ${status !== "all" ? sql`and r.status = ${status}` : sql``}
+        ${source ? sql`and r.source = ${source}` : sql``}
+        ${category ? sql`and r.category = ${category}` : sql``}`;
   const [reports, blocked, [counts]] = await Promise.all([
     sql`
       select r.id, r.hostname, r.category, r.source, r.status, r.created_at, r.description, r.details,
@@ -31,17 +39,17 @@ export default async function AbusePage({ searchParams }: PageProps<"/admin/abus
         exists(select 1 from tunnels t where t.hostname = r.hostname and t.ended_at is null) as online,
         exists(select 1 from blocked_hosts b where b.hostname = r.hostname) as blocked
       from abuse_reports r left join users u on u.id = r.user_id
-      where true
-        ${status !== "all" ? sql`and r.status = ${status}` : sql``}
-        ${source ? sql`and r.source = ${source}` : sql``}
-        ${category ? sql`and r.category = ${category}` : sql``}
-      order by r.created_at desc limit 500`,
+      ${filters}
+      order by r.created_at desc limit ${PAGE_SIZE} offset ${pageOffset(page)}`,
     sql`
       select b.hostname, b.reason, b.created_at, u.email as created_by
-      from blocked_hosts b left join users u on u.id = b.created_by order by b.created_at desc limit 500`,
+      from blocked_hosts b left join users u on u.id = b.created_by order by b.created_at desc
+      limit ${PAGE_SIZE} offset ${pageOffset(blockedPage)}`,
     sql`
       select count(*) filter (where status = 'open')::int as open,
-        (select count(*)::int from domains where approval = 'pending') as pending_domains
+        (select count(*)::int from domains where approval = 'pending') as pending_domains,
+        (select count(*)::int from abuse_reports r ${filters}) as matching,
+        (select count(*)::int from blocked_hosts) as blocked
       from abuse_reports`,
   ]);
   const href = (p: Record<string, string>) => {
@@ -163,6 +171,12 @@ export default async function AbusePage({ searchParams }: PageProps<"/admin/abus
           </table>
           {!reports.length ? <p className="px-4 py-6 text-[13px] text-muted">No reports match.</p> : null}
         </div>
+        <Pager
+          path="/admin/abuse"
+          params={{ status: status === "open" ? "" : status, source, category, blocked_page: blockedPage > 1 ? String(blockedPage) : "" }}
+          page={page}
+          total={counts.matching}
+        />
       </Panel>
 
       <Panel
@@ -194,6 +208,13 @@ export default async function AbusePage({ searchParams }: PageProps<"/admin/abus
         ) : (
           <p className="px-4 py-3 text-[13px] text-muted">No blocked hostnames.</p>
         )}
+        <Pager
+          path="/admin/abuse"
+          name="blocked_page"
+          params={{ status: status === "open" ? "" : status, source, category, page: page > 1 ? String(page) : "" }}
+          page={blockedPage}
+          total={counts.blocked}
+        />
       </Panel>
     </>
   );

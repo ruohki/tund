@@ -5,7 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getSettings } from "@/lib/settings";
 import { db } from "@/lib/db";
-import { listTunnels } from "@/lib/metrics";
+import { countTunnels, listTunnels } from "@/lib/metrics";
+import { PAGE_SIZE, Pager, pageOffset, pageParam } from "@/components/pager";
 import { formatDateTime, formatDuration, formatLifetime, formatNumber, osLabel, sessionLength, timeAgo, timeLeft } from "@/lib/format";
 import { effectiveLimits } from "@/lib/usage";
 import { AuthBadge, Badge, EmptyState, PageHeader, Panel, ProtoBadge } from "@/components/ui";
@@ -54,15 +55,19 @@ function StaticBadge() {
   );
 }
 
-export default async function TunnelsPage() {
+export default async function TunnelsPage({ searchParams }: PageProps<"/tunnels">) {
   const user = await requireUser();
-  const [tunnels, limits] = await Promise.all([listTunnels(user.id, { limit: 150, includeTeams: true }), effectiveLimits(user)]);
+  const page = pageParam((await searchParams).page);
+  const [online, recent, recentTotal, limits] = await Promise.all([
+    listTunnels(user.id, { online: true, limit: 500, includeTeams: true }),
+    listTunnels(user.id, { online: false, limit: PAGE_SIZE, offset: pageOffset(page), includeTeams: true }),
+    countTunnels(user.id, { online: false, includeTeams: true }),
+    effectiveLimits(user),
+  ]);
   // Your own tunnels close after your lifetime; team members' follow theirs.
   const closesIn = (t: { mine: boolean; startedAt: string }) =>
     t.mine && limits.lifetimeMinutes ? timeLeft(t.startedAt, limits.lifetimeMinutes) : null;
-  const online = tunnels.filter((t) => !t.endedAt);
   const myOnline = online.filter((t) => t.mine).length;
-  const recent = tunnels.filter((t) => t.endedAt);
   const cfg = config();
   const settings = await getSettings();
   const maxTunnels = settings.limit_tunnels > 0 && !user.isAdmin ? settings.limit_tunnels : null;
@@ -241,6 +246,7 @@ export default async function TunnelsPage() {
             Tunnels appear here once they disconnect.
           </EmptyState>
         )}
+        <Pager path="/tunnels" page={page} total={recentTotal} />
       </Panel>
     </>
   );
