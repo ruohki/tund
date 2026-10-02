@@ -146,24 +146,20 @@ export function CreateInviteForm({ teamId }: { teamId: string }) {
   const [state, action] = useActionState(createInviteAction, null);
   return (
     <div className="flex flex-col gap-3">
-      <form action={action} className="flex flex-wrap items-end gap-2">
+      <form action={action} className="flex flex-col gap-1.5">
         <input type="hidden" name="team_id" value={teamId} />
-        <Field
-          label="Email (optional)"
-          htmlFor="invite-email"
-          hint="Leave empty for a link anyone can use once."
-          className="min-w-0 flex-1 sm:max-w-sm"
-        >
-          <input id="invite-email" name="email" type="email" placeholder="alex@example.com" className={inputClass} />
-        </Field>
-        <Field label="Role" htmlFor="invite-role" hint=" ">
-          <RoleSelect id="invite-role" name="role" owner={false} />
-        </Field>
-        <div className="pb-5">
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Email (optional)" htmlFor="invite-email" className="min-w-0 flex-1 sm:max-w-sm">
+            <input id="invite-email" name="email" type="email" placeholder="alex@example.com" className={inputClass} />
+          </Field>
+          <Field label="Role" htmlFor="invite-role">
+            <RoleSelect id="invite-role" name="role" owner={false} />
+          </Field>
           <SubmitButton variant="secondary" pendingText="Creating…">
             <Link2 size={14} /> Create invite link
           </SubmitButton>
         </div>
+        <p className="text-xs text-muted">Leave the email empty for a link anyone can use once.</p>
       </form>
       {state?.error ? <FormMessage state={{ error: state.error }} /> : null}
       {state?.link ? <InviteLink link={state.link} email={state.email} emailed={state.emailed} /> : null}

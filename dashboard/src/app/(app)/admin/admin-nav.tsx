@@ -21,7 +21,12 @@ const TABS = [
 export function AdminNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Administration" className="-mx-1 mt-1 flex gap-1 overflow-x-auto scroll-thin border-b border-line">
+    // The baseline is an inset shadow, not a border the active tab overlaps
+    // with -mb-px: that overhang made the scrollable bar scroll vertically too.
+    <nav
+      aria-label="Administration"
+      className="-mx-1 mt-1 flex gap-1 overflow-x-auto overflow-y-hidden scroll-thin shadow-[inset_0_-1px_0_var(--color-line)]"
+    >
       {TABS.map((t) => {
         const active = t.href === "/admin" ? pathname === "/admin" : pathname.startsWith(t.href);
         return (
@@ -30,7 +35,7 @@ export function AdminNav() {
             href={t.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-2.5 py-2 text-[13.5px] transition-colors",
+              "shrink-0 border-b-2 px-2.5 py-2 text-[13.5px] transition-colors",
               active ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink",
             )}
           >
