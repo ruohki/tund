@@ -279,7 +279,7 @@ A public tunnel service will be used for phishing. tund layers several defences:
 
 ## Releases
 
-Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt` and `version.txt`, and multi-arch images to the Chicorée registry at chicor.ee: `chicor.ee/tund/server` and `chicor.ee/tund/dashboard` (`:<version>`, `:<major>.<minor>`, `:latest`). Pushes to `main` publish `:main` and `:main-<sha>` images. The workflow pushes as the service account `tund/github-ci`; its token is the repository secret `CHICOREE_TOKEN`. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
+Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt` and `version.txt`, and multi-arch images to the Chicorée registry at chicor.ee: `chicor.ee/tund/server` and `chicor.ee/tund/dashboard` (`:<version>`, `:<major>.<minor>`, `:latest`). Pushes to `main` publish `:main` and `:main-<sha>` images. The workflow signs in keylessly with its GitHub OIDC token: the organization `tund` on chicor.ee trusts this repository under *Service accounts → CI identities*, so no registry secret is stored. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
 
 ## Development
 
