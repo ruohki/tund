@@ -16,7 +16,7 @@ import {
 import type { PublicConfig } from "@/lib/config";
 import { ALLOW_LIST_HINT } from "@/lib/validate";
 import { AuthBadge, Badge, buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
-import { Command, ConfirmSubmit, CopyButton, SubmitButton } from "@/components/client-ui";
+import { Command, ConfirmSubmit, CopyButton, SubmitButton, submitKeepingValues } from "@/components/client-ui";
 
 export type DomainItem = {
   id: string;
@@ -239,7 +239,7 @@ function PolicyEditor({
   passthrough: boolean;
   teamSso?: TeamSsoNote | null;
 }) {
-  const [state, action] = useActionState(updatePolicyAction, null);
+  const [state, action, pending] = useActionState(updatePolicyAction, null);
   const [mode, setMode] = useState(domain.authMode);
   const modes = [
     { id: "none", label: "Public", hint: "Anyone with the address." },
@@ -247,7 +247,7 @@ function PolicyEditor({
     { id: "oidc", label: "Single sign-on", hint: "Visitors log in with your identity provider." },
   ];
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form onSubmit={submitKeepingValues(action)} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={domain.id} />
       {teamSso ? (
         <p className="rounded-md border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
@@ -345,7 +345,7 @@ function PolicyEditor({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton size="sm" pendingText="Saving…" disabled={mode === "oidc" && providers.length === 0}>
+        <SubmitButton size="sm" pendingText="Saving…" pending={pending} disabled={mode === "oidc" && providers.length === 0}>
           Save access
         </SubmitButton>
         <p className="text-[12px] text-muted">

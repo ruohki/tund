@@ -15,7 +15,7 @@ import {
 import type { TeamRole } from "@/lib/teams";
 import { ALLOW_LIST_HINT } from "@/lib/validate";
 import { buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
-import { Command, ConfirmSubmit, SubmitButton } from "@/components/client-ui";
+import { Command, ConfirmSubmit, SubmitButton, submitKeepingValues } from "@/components/client-ui";
 
 const ROLE_LABEL: Record<TeamRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
@@ -181,13 +181,13 @@ export function TeamSsoForm({
   sso: TeamSso;
   providers: { id: string; name: string; ref: string }[];
 }) {
-  const [state, action] = useActionState(updateTeamSsoAction, null);
+  const [state, action, pending] = useActionState(updateTeamSsoAction, null);
   const [required, setRequired] = useState(sso.required);
   if (!providers.length && !sso.required) {
     return <p className="text-[13px] text-ink-2">Add an identity provider above first.</p>;
   }
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form onSubmit={submitKeepingValues(action)} className="flex flex-col gap-4">
       <input type="hidden" name="team_id" value={teamId} />
       <label className="flex items-center gap-2 text-[13.5px] text-ink">
         <input
@@ -229,7 +229,7 @@ export function TeamSsoForm({
         </>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton size="sm" pendingText="Saving…">
+        <SubmitButton size="sm" pendingText="Saving…" pending={pending}>
           Save
         </SubmitButton>
         <p className="text-[12px] text-muted">

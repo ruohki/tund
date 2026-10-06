@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Check, Copy, Loader2 } from "lucide-react";
 import { buttonClass, cn } from "./ui";
@@ -71,6 +71,21 @@ export function Command({ children, prompt = "$", className }: { children: strin
   );
 }
 
+/**
+ * onSubmit for settings forms: runs the action without React's automatic form
+ * reset, which would put controlled checkboxes, radios and selects back to
+ * their values from page load while the component still shows the new ones.
+ * The fields keep what was just saved. Pass the action's pending state to
+ * SubmitButton, since useFormStatus only sees forms with an action prop.
+ */
+export function submitKeepingValues(action: (fd: FormData) => void) {
+  return (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+    startTransition(() => action(fd));
+  };
+}
+
 export function SubmitButton({
   children,
   variant = "primary",
@@ -80,6 +95,7 @@ export function SubmitButton({
   disabled,
   name,
   value,
+  pending: pendingProp,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost" | "danger";
@@ -90,8 +106,11 @@ export function SubmitButton({
   /** Sent with the form when this button submits it (React includes the submitter). */
   name?: string;
   value?: string;
+  /** For forms submitted with submitKeepingValues. */
+  pending?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = pendingProp ?? status.pending;
   return (
     <button
       type="submit"
