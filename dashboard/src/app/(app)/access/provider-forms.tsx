@@ -21,6 +21,8 @@ export type ProviderItem = {
   hasSecret: boolean;
   scopes: string;
   domains: number;
+  /** The team requires sign-in with this provider on its hostnames. */
+  teamRequired?: boolean;
 };
 
 function slugify(s: string) {
@@ -226,7 +228,11 @@ export function ProviderRow({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[12px] text-muted">
-            {provider.domains ? `Protects ${provider.domains} ${provider.domains === 1 ? "domain" : "domains"}` : "Not used by a domain"}
+            {provider.teamRequired
+              ? "Required on all team hostnames"
+              : provider.domains
+                ? `Protects ${provider.domains} ${provider.domains === 1 ? "domain" : "domains"}`
+                : "Not used by a domain"}
           </span>
           {teamLink ? (
             <Link href={teamLink.href} className={buttonClass("ghost", "sm")}>
@@ -238,12 +244,20 @@ export function ProviderRow({
               <button type="button" onClick={() => setEditing((e) => !e)} className={buttonClass("ghost", "sm")}>
                 {editing ? "Close" : "Edit"}
               </button>
-              <form action={deleteProviderAction}>
-                <input type="hidden" name="id" value={provider.id} />
-                <ConfirmSubmit variant="ghost" confirmText={provider.domains ? "Remove and unprotect?" : "Remove?"}>
-                  Remove
-                </ConfirmSubmit>
-              </form>
+              {provider.teamRequired ? (
+                <span title="The team requires sign-in with this provider. Turn that off or choose another provider under Single sign-on first.">
+                  <button type="button" disabled className={buttonClass("ghost", "sm")}>
+                    Remove
+                  </button>
+                </span>
+              ) : (
+                <form action={deleteProviderAction}>
+                  <input type="hidden" name="id" value={provider.id} />
+                  <ConfirmSubmit variant="ghost" confirmText={provider.domains ? "Remove and unprotect?" : "Remove?"}>
+                    Remove
+                  </ConfirmSubmit>
+                </form>
+              )}
             </>
           ) : null}
         </div>

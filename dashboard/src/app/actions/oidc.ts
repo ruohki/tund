@@ -96,6 +96,9 @@ export async function deleteProviderAction(fd: FormData) {
   } else if (p.user_id !== user.id) {
     return;
   }
+  // The team requires sign-in with it: deleting it would lock every team hostname (the UI offers no button).
+  const [required] = await db()`select 1 from teams where auth_oidc_provider_id = ${id} and auth_oidc_required`;
+  if (required) return;
   // Domains that used it (personal or team, any member's) fall back to "none"; ON DELETE SET NULL
   // would leave auth_mode = 'oidc' without a provider.
   const affected = await db().begin(async (tx) => {

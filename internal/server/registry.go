@@ -117,7 +117,7 @@ type Tunnel struct {
 
 	mu           sync.RWMutex
 	policy       Policy
-	clientPolicy bool     // policy came from the client and overrides the domain
+	clientPolicy *Policy  // what the client asked for (nil = nothing); overrides the domain unless its team requires single sign-on
 	pwOK         sync.Map // sha256(password)+fingerprint -> struct{}, avoids re-running scrypt
 }
 

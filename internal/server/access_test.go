@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -79,6 +81,38 @@ func TestLabels(t *testing.T) {
 	}
 	if l := randomLabel(); !validLabel(l) {
 		t.Errorf("random label %q invalid", l)
+	}
+}
+
+func TestEffectivePolicyTeamSSO(t *testing.T) {
+	team := &TeamSSO{Slug: "acme", Required: true, ProviderID: "team-idp", Allow: []string{"@acme.com"}}
+	client := &Policy{Mode: "password", PasswordTag: "x"}
+	teamDomain := &Domain{TeamID: "t1", AuthMode: "none"}
+
+	cases := []struct {
+		name     string
+		d        *Domain
+		team     *TeamSSO
+		client   *Policy
+		want     Policy
+		enforced bool
+	}{
+		{"team requires, no flags", teamDomain, team, nil, Policy{Mode: "oidc", ProviderID: "team-idp", Allow: []string{"@acme.com"}}, true},
+		{"team requires, flags ignored", teamDomain, team, client, Policy{Mode: "oidc", ProviderID: "team-idp", Allow: []string{"@acme.com"}}, true},
+		{"domain's own sso refines the team's", &Domain{TeamID: "t1", AuthMode: "oidc", AuthOIDCProviderID: "other", AuthOIDCAllow: []string{"a@b.com"}}, team, client,
+			Policy{Mode: "oidc", ProviderID: "other", Allow: []string{"a@b.com"}}, true},
+		{"domain password doesn't weaken it", &Domain{TeamID: "t1", AuthMode: "password", AuthPasswordHash: "h"}, team, nil,
+			Policy{Mode: "oidc", ProviderID: "team-idp", Allow: []string{"@acme.com"}}, true},
+		{"provider deleted fails closed", teamDomain, &TeamSSO{Required: true}, nil, Policy{Mode: "oidc"}, true},
+		{"team requires nothing", teamDomain, &TeamSSO{ProviderID: "team-idp"}, client, *client, false},
+		{"personal hostname", nil, nil, nil, Policy{Mode: "none"}, false},
+		{"personal hostname with flags", nil, nil, client, *client, false},
+	}
+	for _, c := range cases {
+		got, enforced := effectivePolicy(c.d, c.team, c.client)
+		if got.Fingerprint() != c.want.Fingerprint() || enforced != c.enforced {
+			t.Errorf("%s: got %+v (enforced %v), want %+v (enforced %v)", c.name, got, enforced, c.want, c.enforced)
+		}
 	}
 }
 
@@ -252,5 +286,59 @@ func TestIdentityHeaders(t *testing.T) {
 	p := Policy{Mode: "oidc", Allow: []string{"group:eng", "boss@corp.io"}}
 	if !p.Allowed("x@y.z", []string{"eng"}) || p.Allowed("x@y.z", []string{"Eng"}) || !p.Allowed("boss@corp.io", nil) || p.Allowed("", nil) {
 		t.Fatal("group allow list")
+	}
+}
+
+// Runs against a real database: TUND_TEST_DATABASE_URL=postgres://… go test ./internal/server -run TeamSSO
+func TestTeamSSOPostgres(t *testing.T) {
+	dsn := os.Getenv("TUND_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TUND_TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := OpenStore(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var uid, teamID, provID string
+	if err := st.pool.QueryRow(ctx, `insert into users (email, password_hash) values ('sso-test@example.com', 'x') returning id`).Scan(&uid); err != nil {
+		t.Fatal(err)
+	}
+	defer st.pool.Exec(ctx, `delete from users where id = $1`, uid)
+	if err := st.pool.QueryRow(ctx, `insert into teams (name, slug, created_by) values ('SSO', 'sso-test', $1) returning id`, uid).Scan(&teamID); err != nil {
+		t.Fatal(err)
+	}
+	defer st.pool.Exec(ctx, `delete from teams where id = $1`, teamID)
+	if err := st.pool.QueryRow(ctx, `insert into oidc_providers (user_id, team_id, name, slug, issuer, client_id)
+		values ($1, $2, 'Entra', 'entra', 'https://login.example', 'cid') returning id`, uid, teamID).Scan(&provID); err != nil {
+		t.Fatal(err)
+	}
+
+	sso, err := st.TeamSSO(ctx, teamID)
+	if err != nil || sso == nil || sso.Required || sso.Slug != "sso-test" {
+		t.Fatalf("default: %+v, %v", sso, err)
+	}
+	if _, err := st.pool.Exec(ctx, `update teams set auth_oidc_required = true, auth_oidc_provider_id = $2, auth_oidc_allow = '{@example.com}' where id = $1`, teamID, provID); err != nil {
+		t.Fatal(err)
+	}
+	sso, err = st.TeamSSO(ctx, teamID)
+	if err != nil || !sso.Required || sso.ProviderID != provID || len(sso.Allow) != 1 || sso.Allow[0] != "@example.com" {
+		t.Fatalf("required: %+v, %v", sso, err)
+	}
+	// Deleting the provider leaves the requirement without one: the edge fails closed.
+	st.pool.Exec(ctx, `delete from oidc_providers where id = $1`, provID)
+	sso, err = st.TeamSSO(ctx, teamID)
+	if err != nil || !sso.Required || sso.ProviderID != "" {
+		t.Fatalf("provider deleted: %+v, %v", sso, err)
+	}
+	if pol, _ := effectivePolicy(&Domain{TeamID: teamID, AuthMode: "none"}, sso, nil); pol.Mode != "oidc" || pol.ProviderID != "" {
+		t.Fatalf("must fail closed, got %+v", pol)
+	}
+	if sso, err := st.TeamSSO(ctx, "00000000-0000-0000-0000-000000000000"); err != nil || sso != nil {
+		t.Fatalf("unknown team: %+v, %v", sso, err)
 	}
 }

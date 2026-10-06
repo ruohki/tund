@@ -20,7 +20,16 @@ import { EmptyState, PageHeader, Panel } from "@/components/ui";
 import { ProviderForm, ProviderRow, type ProviderItem } from "../../access/provider-forms";
 import { AddCustomDomainForm, DomainRow, StaticHostnameForms } from "../../domains/domain-forms";
 import { ReserveTcpForm, TcpPortRow } from "../../domains/tcp-ports";
-import { AddMemberForm, CreateInviteForm, DeleteTeam, LeaveTeam, MemberRow, RevokeInvite, type MemberItem } from "./team-forms";
+import {
+  AddMemberForm,
+  CreateInviteForm,
+  DeleteTeam,
+  LeaveTeam,
+  MemberRow,
+  RevokeInvite,
+  TeamSsoForm,
+  type MemberItem,
+} from "./team-forms";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   return { title: `Team ${(await params).slug}` };
@@ -42,7 +51,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
   const manage = atLeast(role, "admin");
   const cfg = { ...publicConfig(), serverIps: await serverAddresses() };
 
-  const [memberRows, inviteRows, providerRows, domains, options, pinned, custom] = await Promise.all([
+  const [memberRows, inviteRows, providerRows, domains, options, pinned, custom, [ssoRow]] = await Promise.all([
     db()`
       select u.id, u.email, u.name, m.role from team_members m join users u on u.id = m.user_id
       where m.team_id = ${team.id}
@@ -61,7 +70,13 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
     providerOptions(user.id, team.id),
     domainUsage(user, "subdomain", { teamId: team.id }),
     domainUsage(user, "custom", { teamId: team.id }),
+    db()`select auth_oidc_required, auth_oidc_provider_id, auth_oidc_allow from teams where id = ${team.id}`,
   ]);
+  const sso = {
+    required: Boolean(ssoRow?.auth_oidc_required),
+    providerId: (ssoRow?.auth_oidc_provider_id as string | null) ?? "",
+    allow: (ssoRow?.auth_oidc_allow as string[] | null) ?? [],
+  };
   const [tcpRange, tcpPorts, userCustomOn, passthroughOn, billing] = await Promise.all([
     tcpConfig(),
     listTcpReservations(user.id, { teamId: team.id }),
@@ -104,8 +119,12 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
     hasSecret: Boolean(r.client_secret),
     scopes: r.scopes,
     domains: Number(r.domains),
+    teamRequired: sso.required && sso.providerId === r.id,
   }));
   const provs = options.map((p) => ({ id: p.id, name: p.name, slug: p.slug, ref: p.ref }));
+  const ssoProvider = sso.required ? provs.find((p) => p.id === sso.providerId) : undefined;
+  // What DomainRow shows when the team's sign-in overrides a domain's own setting.
+  const teamSso = sso.required ? { providerName: ssoProvider?.name ?? "" } : null;
   const statics = domains.filter((d) => d.kind === "subdomain");
   const customs = domains.filter((d) => d.kind === "custom");
   const staticFull =
@@ -275,6 +294,31 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
       </Panel>
 
       <Panel
+        id="sso"
+        title="Single sign-on"
+        description={
+          <>
+            Ask visitors of every team hostname to sign in, also when members start tunnels without{" "}
+            <code className="font-mono text-[12.5px]">--oidc</code>. Personal and random hostnames aren&apos;t affected.
+          </>
+        }
+        className="mb-6"
+        bodyClassName="p-4"
+      >
+        {manage ? (
+          <TeamSsoForm teamId={team.id} sso={sso} providers={provs} />
+        ) : sso.required ? (
+          <p className="text-[13px] text-ink-2">
+            Required: visitors sign in with {ssoProvider ? `${ssoProvider.name} (${ssoProvider.ref})` : "the team's provider"}
+            {sso.allow.length ? `, allowed: ${sso.allow.join(", ")}` : ""}. Your <code className="font-mono">--password</code>{" "}
+            and <code className="font-mono">--oidc</code> flags are ignored on team hostnames.
+          </p>
+        ) : (
+          <p className="text-[13px] text-ink-2">Not required. Team hostnames use their own access settings and your flags.</p>
+        )}
+      </Panel>
+
+      <Panel
         id="domains"
         title={
           <>
@@ -298,7 +342,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
         {statics.length ? (
           <ul className="divide-y divide-line">
             {statics.map((d) => (
-              <DomainRow key={d.id} domain={d} providers={provs} cfg={cfg} canManage={manage} />
+              <DomainRow key={d.id} domain={d} providers={provs} cfg={cfg} canManage={manage} teamSso={teamSso} />
             ))}
           </ul>
         ) : (
@@ -349,7 +393,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<"/tea
         {customs.length ? (
           <ul className="divide-y divide-line">
             {customs.map((d) => (
-              <DomainRow key={d.id} domain={d} providers={provs} cfg={cfg} canManage={manage} />
+              <DomainRow key={d.id} domain={d} providers={provs} cfg={cfg} canManage={manage} teamSso={teamSso} />
             ))}
           </ul>
         ) : (

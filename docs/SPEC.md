@@ -90,7 +90,7 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 * `subdomain` set → allowed if valid, not reserved by another user, not in use by another online tunnel. If the user owns a `domains` row for it, that row's access policy applies.
 * `hostname` set → must be a verified domain of this user (exact, or a label under a wildcard domain of this user), or a subdomain of the base domain (treated like `subdomain`).
 * `host_header`: `""`/`preserve` (public host), `rewrite` (host of local_addr), anything else = literal value.
-* `auth` (optional, overrides the domain policy): `{"mode":"password","password":"..."}` or `{"mode":"oidc","provider":"<slug>","allow":["a@b.com","@b.com"]}`.
+* `auth` (optional, overrides the domain policy unless the hostname's team requires single sign-on, see "Teams"): `{"mode":"password","password":"..."}` or `{"mode":"oidc","provider":"<slug>","allow":["a@b.com","@b.com"]}`.
 
 ## Access policies (visitor side, enforced by the edge)
 
@@ -320,6 +320,7 @@ Teams let several accounts share **OIDC providers** and **domains** (static host
 
 * **Binding team domains:** a domain row with `team_id` may be bound by any member of that team (custom domains: verified as before; base subdomains: like a static hostname). `bound.static` is true for team static hostnames too. `--pin` and auto-pin only create **personal** static hostnames; the default static hostname is personal only (`DefaultStatic`/`CountStatic` ignore team rows).
 * **Losing access:** on `team`/`domain` notifications the server re-checks every live tunnel on a team-owned hostname and closes it (`closed`, "you are no longer a member of team <slug>") when its owner is no longer a member or the domain left the team.
+* **Required single sign-on (migration 0022):** `teams.auth_oidc_required`, `auth_oidc_provider_id` (one of the team's providers) and `auth_oidc_allow`. While required, every HTTP tunnel on a team hostname (team static hostnames, team custom domains incl. labels under a team wildcard) gets that policy whatever `auth` the client sends: the client's auth is ignored (an unresolvable one doesn't fail the bind) and `bound.warning` says "team <slug> requires single sign-on on its hostnames; ignoring --password". A team domain whose own policy is `oidc` keeps its provider and allow list; its `none`/`password` don't apply. Personal and random hostnames are unaffected. The edge keeps what the client asked for, so turning the requirement off (dashboard → team → Single sign-on, owners/admins; sends `tund_config {"kind":"team"}`) restores it on live tunnels. A deleted provider (set null) fails closed; the dashboard doesn't offer to delete the required provider.
 * **OIDC provider references** from the client (`--oidc`): `<team-slug>/<provider-slug>` → that team's provider (caller must be a member); `<provider-slug>` → the caller's personal provider, else the unique match among providers of the caller's teams (ambiguous → bind_error naming the candidates as `team/slug`). Domain policies store the provider id; the dashboard only offers providers the domain's owner (user, or team for team domains) may use.
 
 ### Traffic visibility

@@ -403,10 +403,12 @@ func (s *Server) onConfigChange(payload string) {
 			t.session.unbind(t.BindID, "you can no longer use "+t.Hostname+" (it left your team, or you left the team)")
 			continue
 		}
-		if t.clientPolicy {
+		team, err := s.teamSSO(ctx, d)
+		if err != nil {
+			logf("refresh policy for %s: %v", t.Hostname, err)
 			continue
 		}
-		pol := domainPolicy(d)
+		pol, _ := effectivePolicy(d, team, t.clientPolicy)
 		if pol.Fingerprint() != t.Policy().Fingerprint() {
 			t.setPolicy(pol)
 			s.store.SetTunnelAuthMode(ctx, t.ID, pol.Mode)

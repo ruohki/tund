@@ -11,7 +11,7 @@ import { inviteEmail, smtpConfigured, trySendMail } from "@/lib/mail";
 import { db, notify } from "@/lib/db";
 import { isUuid } from "@/lib/requests";
 import { atLeast, membershipById, TEAM_SLUG_RE, teamChanged, type TeamRole } from "@/lib/teams";
-import { checkEmail } from "@/lib/validate";
+import { checkEmail, parseAllowList } from "@/lib/validate";
 import type { FormState } from "./auth";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -203,6 +203,41 @@ export async function revokeInviteAction(fd: FormData) {
   const id = str(fd, "id");
   if (isUuid(id)) await db()`delete from team_invites where id = ${id} and team_id = ${teamId} and accepted_at is null`;
   refresh();
+}
+
+// --- single sign-on ----------------------------------------------------------
+
+/** Require sign-in with a team provider on every team hostname, whatever members pass on the CLI. */
+export async function updateTeamSsoAction(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const teamId = str(fd, "team_id");
+  const a = await actor(user, teamId, "admin");
+  if ("error" in a) return { error: a.error };
+  const required = fd.get("required") === "on";
+  const providerId = str(fd, "provider");
+  let providerName = "";
+  if (providerId) {
+    const [p] = isUuid(providerId)
+      ? await db()`select name from oidc_providers where id = ${providerId} and team_id = ${teamId}`
+      : [];
+    if (!p) return { error: "Choose one of the team's identity providers." };
+    providerName = p.name;
+  } else if (required) {
+    return { error: "Choose the identity provider visitors sign in with." };
+  }
+  const allow = parseAllowList(str(fd, "allow"));
+  if (allow.error) return { error: allow.error };
+  await db()`
+    update teams set auth_oidc_required = ${required}, auth_oidc_provider_id = ${providerId || null},
+      auth_oidc_allow = ${allow.entries}
+    where id = ${teamId}`;
+  await teamChanged(teamId);
+  refresh();
+  return {
+    ok: required
+      ? `Saved. Visitors of team hostnames sign in with ${providerName}; tunnels already online switch right away.`
+      : "Sign-in is no longer required. Team hostnames use their own access settings and the members' flags again.",
+  };
 }
 
 export type AcceptResult = { error: string } | null;

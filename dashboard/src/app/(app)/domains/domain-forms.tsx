@@ -44,6 +44,9 @@ export type DomainItem = {
   checkedAgo: string;
 };
 
+/** The sign-in a team requires on all its hostnames. */
+export type TeamSsoNote = { providerName: string };
+
 /** A provider the domain may use; `ref` is how the CLI names it (slug, or team/slug). */
 export type Provider = { id: string; name: string; slug: string; ref: string };
 
@@ -225,7 +228,17 @@ function DnsRecords({ domain, cfg }: { domain: DomainItem; cfg: PublicConfig }) 
   );
 }
 
-function PolicyEditor({ domain, providers, passthrough }: { domain: DomainItem; providers: Provider[]; passthrough: boolean }) {
+function PolicyEditor({
+  domain,
+  providers,
+  passthrough,
+  teamSso,
+}: {
+  domain: DomainItem;
+  providers: Provider[];
+  passthrough: boolean;
+  teamSso?: TeamSsoNote | null;
+}) {
   const [state, action] = useActionState(updatePolicyAction, null);
   const [mode, setMode] = useState(domain.authMode);
   const modes = [
@@ -236,6 +249,13 @@ function PolicyEditor({ domain, providers, passthrough }: { domain: DomainItem; 
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={domain.id} />
+      {teamSso ? (
+        <p className="rounded-md border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink-2">
+          The team requires sign-in with {teamSso.providerName || "its identity provider"} on all its hostnames, so Public
+          and Password don&apos;t apply here. Choose Single sign-on to use another provider or allow list for this{" "}
+          {domain.kind === "custom" ? "domain" : "hostname"}.
+        </p>
+      ) : null}
       <fieldset>
         <legend className="mb-2 text-[13px] font-medium text-ink">Who can open this domain</legend>
         <div className="grid gap-2 sm:grid-cols-3">
@@ -329,8 +349,18 @@ function PolicyEditor({ domain, providers, passthrough }: { domain: DomainItem; 
           Save access
         </SubmitButton>
         <p className="text-[12px] text-muted">
-          Applies to HTTP tunnels on this {domain.kind === "custom" ? "domain" : "hostname"} unless the client passes its
-          own <code className="font-mono">--password</code> or <code className="font-mono">--oidc</code>.
+          {teamSso ? (
+            <>
+              Applies to HTTP tunnels on this {domain.kind === "custom" ? "domain" : "hostname"}; members&apos;{" "}
+              <code className="font-mono">--password</code> and <code className="font-mono">--oidc</code> flags are
+              ignored while the team requires sign-in.
+            </>
+          ) : (
+            <>
+              Applies to HTTP tunnels on this {domain.kind === "custom" ? "domain" : "hostname"} unless the client passes
+              its own <code className="font-mono">--password</code> or <code className="font-mono">--oidc</code>.
+            </>
+          )}
           {passthrough ? (
             <>
               {" "}
@@ -350,13 +380,18 @@ export function DomainRow({
   providers,
   cfg,
   canManage = true,
+  teamSso,
 }: {
   domain: DomainItem;
   providers: Provider[];
   cfg: PublicConfig;
   /** False for plain team members: they can use the domain but not change it. */
   canManage?: boolean;
+  /** Set when the owning team requires sign-in on its hostnames. */
+  teamSso?: TeamSsoNote | null;
 }) {
+  // A team's required sign-in beats the domain's own Public/Password setting.
+  const enforced = teamSso && domain.authMode !== "oidc" ? teamSso : null;
   const [open, setOpen] = useState<"dns" | "access" | null>(
     canManage && domain.kind === "custom" && !domain.verified ? "dns" : null,
   );
@@ -409,8 +444,12 @@ export function DomainRow({
           ) : domain.approval === "rejected" ? (
             <Badge tone="danger">Rejected</Badge>
           ) : null}
-          <AuthBadge mode={domain.authMode} />
-          {domain.authMode === "oidc" && domain.providerName ? (
+          <AuthBadge mode={enforced ? "oidc" : domain.authMode} />
+          {enforced ? (
+            <span className="text-[12px] text-muted">
+              {enforced.providerName ? `via ${enforced.providerName}, ` : ""}required by the team
+            </span>
+          ) : domain.authMode === "oidc" && domain.providerName ? (
             <span className="text-[12px] text-muted">via {domain.providerName}</span>
           ) : null}
         </div>
@@ -481,7 +520,7 @@ export function DomainRow({
 
       {open === "access" ? (
         <div className="mt-3 rounded-md border border-line p-3">
-          <PolicyEditor domain={domain} providers={providers} passthrough={Boolean(cfg.passthrough)} />
+          <PolicyEditor domain={domain} providers={providers} passthrough={Boolean(cfg.passthrough)} teamSso={teamSso} />
         </div>
       ) : null}
 

@@ -408,6 +408,27 @@ func (s *Store) TeamProviders(ctx context.Context, userID, teamSlug, slug string
 	return out, rows.Err()
 }
 
+// TeamSSO is the single sign-on a team requires on its hostnames.
+type TeamSSO struct {
+	Slug       string
+	Required   bool
+	ProviderID string // "" once the provider was deleted
+	Allow      []string
+}
+
+func (s *Store) TeamSSO(ctx context.Context, teamID string) (*TeamSSO, error) {
+	var t TeamSSO
+	err := s.pool.QueryRow(ctx, `select slug, auth_oidc_required, coalesce(auth_oidc_provider_id::text, ''), auth_oidc_allow
+		from teams where id = $1`, teamID).Scan(&t.Slug, &t.Required, &t.ProviderID, &t.Allow)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (s *Store) IsTeamMember(ctx context.Context, teamID, userID string) (bool, error) {
 	var ok bool
 	err := s.pool.QueryRow(ctx, `select exists(select 1 from team_members where team_id = $1 and user_id = $2)`, teamID, userID).Scan(&ok)

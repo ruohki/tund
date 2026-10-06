@@ -10,8 +10,10 @@ import {
   leaveTeamAction,
   removeMemberAction,
   revokeInviteAction,
+  updateTeamSsoAction,
 } from "@/app/actions/teams";
 import type { TeamRole } from "@/lib/teams";
+import { ALLOW_LIST_HINT } from "@/lib/validate";
 import { buttonClass, cn, Field, FormMessage, inputClass, Select } from "@/components/ui";
 import { Command, ConfirmSubmit, SubmitButton } from "@/components/client-ui";
 
@@ -164,6 +166,80 @@ export function CreateInviteForm({ teamId }: { teamId: string }) {
       {state?.error ? <FormMessage state={{ error: state.error }} /> : null}
       {state?.link ? <InviteLink link={state.link} email={state.email} emailed={state.emailed} /> : null}
     </div>
+  );
+}
+
+export type TeamSso = { required: boolean; providerId: string; allow: string[] };
+
+/** Require sign-in with a team provider on every team hostname. */
+export function TeamSsoForm({
+  teamId,
+  sso,
+  providers,
+}: {
+  teamId: string;
+  sso: TeamSso;
+  providers: { id: string; name: string; ref: string }[];
+}) {
+  const [state, action] = useActionState(updateTeamSsoAction, null);
+  const [required, setRequired] = useState(sso.required);
+  if (!providers.length && !sso.required) {
+    return <p className="text-[13px] text-ink-2">Add an identity provider above first.</p>;
+  }
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <input type="hidden" name="team_id" value={teamId} />
+      <label className="flex items-center gap-2 text-[13.5px] text-ink">
+        <input
+          type="checkbox"
+          name="required"
+          checked={required}
+          onChange={(e) => setRequired(e.target.checked)}
+          className="h-4 w-4 accent-[var(--ink)]"
+        />
+        Require sign-in on all team hostnames
+      </label>
+      {required ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Identity provider" htmlFor="sso-provider">
+            <Select
+              id="sso-provider"
+              name="provider"
+              defaultValue={sso.providerId}
+              required
+              placeholder="Choose…"
+              options={providers.map((p) => ({ value: p.id, label: `${p.name} (${p.ref})` }))}
+            />
+          </Field>
+          <Field label="Allowed people" htmlFor="sso-allow" hint={ALLOW_LIST_HINT}>
+            <input
+              id="sso-allow"
+              name="allow"
+              defaultValue={sso.allow.join(", ")}
+              placeholder="@company.com, alex@example.org, group:engineering"
+              className={cn(inputClass, "font-mono text-[12.5px]")}
+            />
+          </Field>
+        </div>
+      ) : (
+        <>
+          {/* Keep the stored choice for when it's turned on again. */}
+          <input type="hidden" name="provider" value={sso.providerId} />
+          <input type="hidden" name="allow" value={sso.allow.join(", ")} />
+        </>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton size="sm" pendingText="Saving…">
+          Save
+        </SubmitButton>
+        <p className="text-[12px] text-muted">
+          Members&apos; <code className="font-mono">--password</code> and <code className="font-mono">--oidc</code> flags
+          are ignored on team hostnames while this is on. A team domain set to single sign-on in its own access settings
+          keeps its provider and allow list.
+        </p>
+      </div>
+      <FormMessage state={state} />
+    </form>
   );
 }
 

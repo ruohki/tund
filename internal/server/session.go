@@ -390,14 +390,31 @@ func (as *AgentSession) createTunnel(ctx context.Context, m protocol.Message) (*
 		}
 	}
 
-	pol, clientPolicy := Policy{Mode: protocol.AuthNone}, false
+	pol := Policy{Mode: protocol.AuthNone}
 	if proto == protocol.ProtoHTTP {
-		if pol, clientPolicy, err = s.bindPolicy(ctx, acct.UserID, b.Auth, domain); err != nil {
+		team, err := s.teamSSO(ctx, domain)
+		if err != nil {
 			s.releaseTunnel(t)
 			return nil, "", err
 		}
+		client, err := s.clientPolicy(ctx, acct.UserID, b.Auth)
+		var enforced bool
+		pol, enforced = effectivePolicy(domain, team, client)
+		switch {
+		case enforced && b.Auth != nil && b.Auth.Mode != "" && (client == nil || client.Fingerprint() != pol.Fingerprint()):
+			// The flags don't count here, so neither do their errors.
+			note := "team " + team.Slug + " requires single sign-on on its hostnames; ignoring " + authFlag(b.Auth)
+			if warning != "" {
+				note = warning + "; " + note
+			}
+			warning = note
+		case err != nil && !enforced:
+			s.releaseTunnel(t)
+			return nil, "", err
+		}
+		t.clientPolicy = client
 	}
-	t.policy, t.clientPolicy = pol, clientPolicy
+	t.policy = pol
 	t.ownerTrusted.Store(acct.IsAdmin || acct.Trusted)
 	s.updateWarn(t)
 
@@ -837,32 +854,72 @@ func (s *Server) resolveProvider(ctx context.Context, userID, ref string) (*OIDC
 	return nil, bindError(fmt.Sprintf("OIDC provider %q exists in several of your teams; use one of: %s", ref, strings.Join(names, ", ")))
 }
 
-func (s *Server) bindPolicy(ctx context.Context, userID string, a *protocol.Auth, d *Domain) (Policy, bool, error) {
-	if a != nil && a.Mode != "" {
-		switch a.Mode {
-		case protocol.AuthNone:
-			return Policy{Mode: protocol.AuthNone}, true, nil
-		case protocol.AuthPassword:
-			if len(a.Password) < 4 {
-				return Policy{}, false, bindError("password must have at least 4 characters")
-			}
-			h, err := pwhash.Hash(a.Password)
-			if err != nil {
-				return Policy{}, false, err
-			}
-			tag := hex.EncodeToString(s.signer.mac("tunnel-password", []byte(a.Password)))
-			return Policy{Mode: protocol.AuthPassword, PasswordHash: h, PasswordTag: tag}, true, nil
-		case protocol.AuthOIDC:
-			p, err := s.resolveProvider(ctx, userID, a.Provider)
-			if err != nil {
-				return Policy{}, false, err
-			}
-			return Policy{Mode: protocol.AuthOIDC, ProviderID: p.ID, Allow: a.Allow}, true, nil
-		default:
-			return Policy{}, false, bindError("unknown auth mode " + a.Mode)
-		}
+// clientPolicy resolves the access policy the client asked for; nil when it
+// asked for none.
+func (s *Server) clientPolicy(ctx context.Context, userID string, a *protocol.Auth) (*Policy, error) {
+	if a == nil || a.Mode == "" {
+		return nil, nil
 	}
-	return domainPolicy(d), false, nil
+	switch a.Mode {
+	case protocol.AuthNone:
+		return &Policy{Mode: protocol.AuthNone}, nil
+	case protocol.AuthPassword:
+		if len(a.Password) < 4 {
+			return nil, bindError("password must have at least 4 characters")
+		}
+		h, err := pwhash.Hash(a.Password)
+		if err != nil {
+			return nil, err
+		}
+		tag := hex.EncodeToString(s.signer.mac("tunnel-password", []byte(a.Password)))
+		return &Policy{Mode: protocol.AuthPassword, PasswordHash: h, PasswordTag: tag}, nil
+	case protocol.AuthOIDC:
+		p, err := s.resolveProvider(ctx, userID, a.Provider)
+		if err != nil {
+			return nil, err
+		}
+		return &Policy{Mode: protocol.AuthOIDC, ProviderID: p.ID, Allow: a.Allow}, nil
+	default:
+		return nil, bindError("unknown auth mode " + a.Mode)
+	}
+}
+
+// teamSSO loads the single sign-on the team owning d requires; nil for
+// personal domains and hostnames without a domain row.
+func (s *Server) teamSSO(ctx context.Context, d *Domain) (*TeamSSO, error) {
+	if d == nil || d.TeamID == "" {
+		return nil, nil
+	}
+	return s.store.TeamSSO(ctx, d.TeamID)
+}
+
+// effectivePolicy picks a tunnel's access policy: single sign-on its team
+// requires beats the client's flags (client), which beat the domain's own
+// settings. enforced reports that the team decided.
+func effectivePolicy(d *Domain, team *TeamSSO, client *Policy) (pol Policy, enforced bool) {
+	if d != nil && team != nil && team.Required {
+		if d.AuthMode == protocol.AuthOIDC && d.AuthOIDCProviderID != "" {
+			// The domain's own single sign-on settings refine the team's.
+			return domainPolicy(d), true
+		}
+		// Without a provider (deleted) this fails closed.
+		return Policy{Mode: protocol.AuthOIDC, ProviderID: team.ProviderID, Allow: team.Allow}, true
+	}
+	if client != nil {
+		return *client, false
+	}
+	return domainPolicy(d), false
+}
+
+// authFlag names the client's auth option in messages.
+func authFlag(a *protocol.Auth) string {
+	switch a.Mode {
+	case protocol.AuthPassword:
+		return "--password"
+	case protocol.AuthOIDC:
+		return "--oidc " + a.Provider
+	}
+	return "the requested access policy"
 }
 
 func domainPolicy(d *Domain) Policy {
