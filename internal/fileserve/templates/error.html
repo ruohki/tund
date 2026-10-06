@@ -1,0 +1,14 @@
+{{define "body"}}<body>
+{{sprite}}
+<main class="solo">
+{{template "basic"}}
+<p class="eyebrow"><a href="/">{{.Eyebrow}}</a></p>
+<p class="code">{{.Code}}</p>
+<h1>{{.Heading}}</h1>
+<p class="msg">{{if .Subject}}{{.Before}}<code dir="auto">{{.Subject}}</code>{{.After}}{{else}}{{.Message}}{{end}}</p>
+{{with .Detail}}<p class="detail">{{.}}</p>
+{{end}}{{with .Actions}}<div class="row">{{range .}}<a class="btn{{if not .Primary}} ghost{{end}}" href="{{.Href}}" dir="auto">{{with .Icon}}<svg class="i" aria-hidden="true"><use href="#i-{{.}}"/></svg>{{end}}{{.Label}}</a>{{end}}</div>
+{{end}}{{with .Foot}}<p class="hint">{{.}}</p>
+{{end}}{{if .Identity.Method}}<div class="foot"><p>{{template "signed" .}}</p></div>
+{{end}}</main>
+</body>{{end}}

@@ -1,0 +1,23 @@
+body{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.solo{width:100%;max-width:480px;padding:32px;background:var(--card);border:var(--b);border-radius:14px}
+.solo .eyebrow{margin-bottom:24px}
+.solo .banner{margin-bottom:20px}
+.tile{width:56px;height:56px;display:grid;place-items:center;margin-bottom:16px;border-radius:14px;color:var(--k);background:color-mix(in srgb,currentColor 12%,transparent)}
+.preview{display:block;max-width:100%;max-height:280px;margin:0 0 16px;border:var(--b);border-radius:10px;background:repeating-conic-gradient(var(--code) 0 25%,var(--card) 0 50%) 0 0/16px 16px}
+.solo .title{font-size:20px;line-height:26px}
+.solo .meta{margin-top:6px}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.row .btn{height:auto;min-height:40px;padding:9px 16px;overflow-wrap:anywhere}
+.code{margin:0;font:700 13px var(--mono);color:var(--muted)}
+h1{margin:6px 0 10px;font-size:22px;line-height:1.25;letter-spacing:-.01em}
+.msg{margin:0;color:var(--muted)}
+.msg code{padding:2px 6px;border-radius:6px;background:var(--code);font:13px var(--mono);color:var(--fg);overflow-wrap:anywhere}
+.detail{margin:12px 0 0;padding:10px 12px;border-radius:6px;background:var(--code);font:12.5px var(--mono);color:var(--danger);overflow-wrap:anywhere}
+.hint{margin:16px 0 0;font-size:13px;color:var(--muted)}
+.foot{margin-top:24px;padding-top:16px;border-top:var(--b);font-size:12.5px;color:var(--muted)}
+.foot p{margin:0}
+.foot .cmd pre{font-size:12px}
+.foot a{text-decoration:underline}
+.host{font-family:var(--mono);overflow-wrap:anywhere}
+.note{margin:0 0 12px}
+@media (max-width:400px){.solo{padding:24px}}

@@ -114,7 +114,7 @@ Default server: ` + orNone(client.DefaultServer),
 	root.PersistentFlags().StringVar(&g.configPath, "config", "", "config file (default: "+defaultPathHint()+")")
 	root.PersistentFlags().BoolVar(&g.logMode, "log", false, "print plain log lines instead of the interactive view")
 
-	root.AddCommand(newHTTPCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newStatusCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newUpdateCmd(g), newVersionCmd(g))
+	root.AddCommand(newHTTPCmd(g), newServeCmd(g), newTCPCmd(g), newTLSCmd(g), newStartCmd(g), newStatusCmd(g), newLoginCmd(g), newLogoutCmd(g), newMCPCmd(g), newConfigCmd(g), newUpdateCmd(g), newVersionCmd(g))
 	return root
 }
 
@@ -340,13 +340,18 @@ func tunnelNames(cfg *client.Config) []string {
 }
 
 func runTunnels(g *globals, cfg *client.Config, cfgPath string, specs []client.TunnelSpec) error {
+	ctx, stop := signalContext()
+	defer stop()
+	return runTunnelsWith(ctx, g, cfg, cfgPath, specs, client.NewDisplay(g.logMode))
+}
+
+// runTunnelsWith runs the tunnels until ctx ends, printing to display (tund
+// serve passes its own, which also shows uploads).
+func runTunnelsWith(ctx context.Context, g *globals, cfg *client.Config, cfgPath string, specs []client.TunnelSpec, display *client.Display) error {
 	s, err := g.resolve(cfg)
 	if err != nil {
 		return err
 	}
-	ctx, stop := signalContext()
-	defer stop()
-	display := client.NewDisplay(g.logMode)
 
 	if s.token == "" {
 		if !client.Interactive() {

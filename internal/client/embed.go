@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"sync"
@@ -167,9 +168,11 @@ type TunnelInfo struct {
 type TunnelOptions struct {
 	Server    string
 	Authtoken string
-	Spec      TunnelSpec
-	State     *State      // optional, remembers random labels
-	OnEvent   func(Event) // optional; called synchronously, must not block
+	// Spec is the tunnel. A Spec.Handler is served in this process until
+	// the tunnel stops; Stop never closes it.
+	Spec    TunnelSpec
+	State   *State      // optional, remembers random labels
+	OnEvent func(Event) // optional; called synchronously, must not block
 }
 
 // Tunnel runs a single tunnel in the background on its own connection,
@@ -192,8 +195,8 @@ func StartTunnel(opts TunnelOptions) (*Tunnel, error) {
 		done:    make(chan struct{}),
 		ready:   make(chan struct{}),
 		onEvent: opts.OnEvent,
-		info: TunnelInfo{Name: opts.Spec.Name, LocalAddr: opts.Spec.LocalAddr, State: StateConnecting, StartedAt: time.Now(),
-			Proto: opts.Spec.proto(), RemotePort: opts.Spec.RemotePort},
+		info: TunnelInfo{Name: opts.Spec.Name, LocalAddr: cmp.Or(opts.Spec.Display, opts.Spec.LocalAddr), State: StateConnecting,
+			StartedAt: time.Now(), Proto: opts.Spec.proto(), RemotePort: opts.Spec.RemotePort},
 	}
 	c, err := New(Options{
 		Server:    opts.Server,

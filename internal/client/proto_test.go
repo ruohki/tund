@@ -1,6 +1,7 @@
 package client
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +82,54 @@ func TestValidate(t *testing.T) {
 	for _, s := range bad {
 		if err := s.Validate(); err == nil {
 			t.Errorf("Validate(%+v) should fail", s)
+		}
+	}
+}
+
+func TestValidateHandler(t *testing.T) {
+	base := handlerSpec(http.NotFoundHandler())
+	with := func(change func(*TunnelSpec)) TunnelSpec {
+		s := base
+		change(&s)
+		return s
+	}
+	good := []TunnelSpec{
+		base,
+		with(func(s *TunnelSpec) {
+			s.Auth = &protocol.Auth{Mode: protocol.AuthOIDC, Provider: "google", Allow: []string{"@example.com"}}
+		}),
+		with(func(s *TunnelSpec) { s.Proto, s.Random, s.Pin = "http", true, true }),
+		with(func(s *TunnelSpec) {
+			s.Subdomain, s.AllowIPs, s.RestartOnExpiry = "files", []string{"203.0.113.7"}, true
+		}),
+		with(func(s *TunnelSpec) { s.LocalAddr = "https://file-share:443" }),
+	}
+	for _, s := range good {
+		if err := s.Validate(); err != nil {
+			t.Errorf("Validate(%+v) = %v", s, err)
+		}
+	}
+	bad := map[string]TunnelSpec{
+		"no auth":         with(func(s *TunnelSpec) { s.Auth = nil }),
+		"auth none":       with(func(s *TunnelSpec) { s.Auth = &protocol.Auth{Mode: protocol.AuthNone} }),
+		"empty auth mode": with(func(s *TunnelSpec) { s.Auth = &protocol.Auth{Password: "correct-horse"} }),
+		"tcp":             with(func(s *TunnelSpec) { s.Proto = "tcp" }),
+		"tls":             with(func(s *TunnelSpec) { s.Proto = "tls" }),
+		"rules":           with(func(s *TunnelSpec) { s.Rules = &protocol.Rules{RateLimit: "10/s"} }),
+		"pool":            with(func(s *TunnelSpec) { s.Pool, s.Subdomain = true, "files" }),
+		"host header":     with(func(s *TunnelSpec) { s.HostHeader = "rewrite" }),
+		"tls termination": with(func(s *TunnelSpec) { s.TerminateCert, s.TerminateKey = "c.pem", "k.pem" }),
+		"no label":        with(func(s *TunnelSpec) { s.LocalAddr = "" }),
+		"path as label":   with(func(s *TunnelSpec) { s.LocalAddr = "/home/alice/share" }),
+		"file URL":        with(func(s *TunnelSpec) { s.LocalAddr = "file:///home/alice/share" }),
+		"label sans host": with(func(s *TunnelSpec) { s.LocalAddr = "http://" }),
+	}
+	for name, s := range bad {
+		if err := s.Validate(); err == nil {
+			t.Errorf("%s: Validate should fail", name)
+		}
+		if _, err := New(Options{Server: "https://tund.example.com", Authtoken: "tund_x", Tunnels: []TunnelSpec{s}, Events: func(Event) {}}); err == nil {
+			t.Errorf("%s: New should fail", name)
 		}
 	}
 }

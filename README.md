@@ -83,6 +83,7 @@ When a newer release is out, `tund http` shows an *Update* line (older clients p
 | `tund http 3000 --host-header rewrite` | send `Host: localhost:3000` instead of the public host |
 | `tund http 3000 --password s3cret` | visitors must enter a password; scripts can use `curl -u :s3cret` |
 | `tund http 3000 --oidc google --oidc-allow @company.com` | visitors sign in with an OIDC provider configured in the dashboard |
+| `tund serve ./dist --password s3cret-share` | share a folder: visitors browse and download; `--upload` lets them add files (see [Share files](#share-files)) |
 | `tund start --all` | start every tunnel defined in `tund.yml` |
 | `tund status` | your online tunnels on every machine: URL, local address, machine, uptime, when they close |
 | `tund http 3000 --restart-on-expiry` | start the tunnel again when the server closes it for reaching its maximum lifetime |
@@ -162,6 +163,54 @@ TCP tunnels get a port from the server's `TUND_TCP_PORTS` range (open it in your
 TLS tunnels route by SNI and pass the encrypted stream through untouched, so visitors see the certificate of your own service. That's end-to-end encryption, typically with a custom domain and your own certificate. Alternatively the client terminates TLS with `--terminate-cert/--terminate-key` and forwards plaintext locally.
 
 TCP and TLS have no HTTP layer, so instead of requests the inspector records **connections**: client IP, bytes in/out, duration and errors. The API exposes them at `GET /_tund/api/v1/connections`.
+
+## Share files
+
+`tund serve` puts a file or a folder from your machine on an HTTPS URL, with a file browser for visitors. A share is always behind a password or single sign-on, and nothing listens on a local port: the CLI serves the files itself, so they are reachable only through the tunnel.
+
+```sh
+tund serve ./dist --password s3cret-share              # browse and download a folder
+tund serve report.pdf --password s3cret-share          # a download page for one file
+tund serve ~/inbox --upload --password s3cret-share    # visitors can also upload files
+tund serve ./photos --oidc google --oidc-allow @example.com
+tund serve ./team --oidc acme/okta --oidc-allow '*'    # anyone who can sign in to acme/okta
+tund serve ./share --subdomain files --pin --password s3cret-share   # keep https://files.<base>
+```
+
+```
+Forwarding  https://quiet-heron-2817.tund.io → ~/inbox  [upload]  [password]
+            visitors can browse, download and upload files · uploads never replace existing files
+            hidden from visitors: dotfiles and secret files (.env, keys, credentials)
+
+14:05:12  ↑ saved   /report (1).pdf · 2.4 MB · 203.0.113.7 · report.pdf was taken
+```
+
+Without `--password` or `--oidc`, tund doesn't start and suggests the command again with a freshly generated password. Passwords need at least 8 characters, and `--oidc` needs `--oidc-allow` (`'*'` admits anyone who can sign in to the provider). A share gets a random hostname that tund remembers for its path, never your default static hostname; `--subdomain` or `--domain` picks a fixed one, and `--pin` (only with one of them) keeps it as a static hostname of your account.
+
+* **Visitors** open folders, view images, PDFs, audio, video and text in the browser, and download files; a single file gets a download page. The pages show who is signed in, with *Sign out*.
+* **Uploads** are off unless you pass `--upload` (folders only). Visitors can then add files to the folder and its subfolders by drag and drop, the file picker or curl. A taken name gets a number (`report (1).pdf`): nothing is ever replaced, deleted or renamed, and no folders are created. Every upload shows up in your terminal with the sender's email or IP address.
+* **Never shared**: dotfiles and dot folders, and secret files recognized by name or content: `.env` files, SSH, TLS and other private keys, keystores and password databases, cloud credentials and tokens (AWS keys, kubeconfigs, `credentials.json`, Terraform state), browser and keychain data, shell histories and `.git` folders. Listings leave them out, visitors can't open them (they answer 404, like missing files; a listed file found to hold a secret when it is opened answers 403), and uploads can't use such names. tund also refuses to share `/` (or the system drive, `C:\`), system folders, your home folder and the folders that contain it, and anything inside a dot or secret folder; with `--upload`, also folders inside hidden ones like `~/Library` or `AppData`. The filter is a safety net, not a guarantee: hard links and renamed copies of secrets can't always be recognized, so share a folder that holds just what you mean to share.
+
+curl works with password shares (shares behind `--oidc` are for browsers only):
+
+```sh
+curl -u :s3cret-share https://files.tund.io/photos/                                # list: one name per line, folders end with /
+curl -u :s3cret-share -H 'Accept: application/json' https://files.tund.io/photos/  # the same as JSON
+curl -u :s3cret-share -OJ https://files.tund.io/photos/IMG_0001.jpg                # download under the shared name
+curl -u :s3cret-share -OJ https://files.tund.io/                                   # a shared single file
+curl -u :s3cret-share -C - -o ubuntu.iso https://files.tund.io/isos/ubuntu.iso     # resume (-C - can't be combined with -J)
+curl -u :s3cret-share -T report.pdf https://files.tund.io/inbox/                   # upload; the trailing / keeps the local name
+curl -u :s3cret-share -T report.pdf https://files.tund.io/inbox/q3.pdf             # upload under another name
+curl -u :s3cret-share -F file=@a.jpg -F file=@b.jpg https://files.tund.io/inbox/   # several files in one request
+```
+
+A taken name is never replaced; the response says which name was used. A folder URL without the trailing `/` answers 409 instead of saving the file next to the folder, and uploads can't be resumed: send a broken-off file again in full, without `-C`. `curl -OJ` writes letters outside ASCII as `_` (`Café.pdf` arrives as `Caf_.pdf`); browsers keep the name.
+
+Good to know:
+
+* Transfers appear in the inspector like any other request, including the first part of each file's content (256 KiB by default, `TUND_CAPTURE_MAX_BODY`). On team hostnames, team members see them too.
+* Every byte counts toward your account's bandwidth limit and monthly transfer quota.
+* HTML files download instead of opening: `tund serve` shares files, it doesn't run websites. For a site, run a local web server and use `tund http`.
 
 ## AI agents (MCP)
 

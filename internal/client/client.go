@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -48,6 +49,20 @@ type TunnelSpec struct {
 	// Pool shares the hostname with the account's other tunnels started
 	// with Pool and the same settings; visitors are spread across them.
 	Pool bool
+	// Handler, if set, serves the tunnel in this process: data streams go to
+	// an in-process HTTP/1.1 server instead of being piped to LocalAddr,
+	// which is then only the label the server stores and shows (still an
+	// http(s) URL; never private data such as a local path). Needs Auth with
+	// a password or OIDC. The client never closes it.
+	Handler http.Handler
+	// Display replaces LocalAddr in this client's output (terminal, events);
+	// for a Handler it also keys the remembered random hostname.
+	Display string
+	// Notes are extra dim rows under the Forwarding row (not in log mode).
+	Notes []string
+	// Badge is an extra badge after the URL: "upload" → [upload], or
+	// badge=upload in log mode.
+	Badge string
 }
 
 // Options configure a Client.
@@ -146,6 +161,7 @@ type tunnel struct {
 	// restarting: bound again after reaching the maximum lifetime; bind
 	// errors are retried while the server lets go of the old tunnel.
 	restarting bool
+	inproc     *streamListener // Handler tunnels, while Run serves them
 }
 
 func (t *tunnel) userNamed() bool {
@@ -216,11 +232,12 @@ func New(opts Options) (*Client, error) {
 		if s.AllowIPs, err = NormalizeAllowIPs(s.AllowIPs); err != nil {
 			return nil, fmt.Errorf("tunnel %q: %w", s.Name, err)
 		}
-		target, err := targetFor(s)
-		if err != nil {
-			return nil, err
+		t := &tunnel{spec: s}
+		if s.Handler == nil { // a Handler's LocalAddr is only a label
+			if t.target, err = targetFor(s); err != nil {
+				return nil, err
+			}
 		}
-		t := &tunnel{spec: s, target: target}
 		if s.Rules != nil {
 			for _, r := range s.Rules.Routes {
 				rt, err := parseTarget(r.LocalAddr)
@@ -251,7 +268,13 @@ func New(opts Options) (*Client, error) {
 	return c, nil
 }
 
+// stateKey names a tunnel in the State file. Handler tunnels share one label
+// as LocalAddr, so they are keyed by what they serve (Display): each shared
+// folder keeps its own random hostname.
 func (c *Client) stateKey(t *tunnel) string {
+	if t.spec.Handler != nil {
+		return c.opts.Server + " handler " + cmp.Or(t.spec.Display, t.spec.LocalAddr)
+	}
 	if p := t.spec.proto(); p != protocol.ProtoHTTP {
 		return c.opts.Server + " " + p + " " + t.spec.LocalAddr
 	}
@@ -261,6 +284,8 @@ func (c *Client) stateKey(t *tunnel) string {
 // Run connects and keeps the tunnels online until ctx is cancelled or a fatal
 // error happens (bad authtoken, no tunnel could be bound, …).
 func (c *Client) Run(ctx context.Context) error {
+	stop := c.startInproc()
+	defer stop()
 	attempt := 0
 	for {
 		connected, err := c.runSession(ctx)
@@ -494,6 +519,13 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 				if t == nil {
 					continue
 				}
+				if unprotectedHandler(t, m) {
+					v := c.refuseUnprotected(ctl, t, m.URL)
+					if headerShown {
+						c.ui.TunnelFailed(v)
+					}
+					break // to the checks below: it may have been the last tunnel
+				}
 				c.mu.Lock()
 				t.status, t.url, t.host, t.authMode, t.err = statusOnline, m.URL, hostOf(m.URL), m.AuthMode, ""
 				t.static, t.warning, t.tunnelID, t.warnPage = m.Static, m.Warning, m.TunnelID, m.BrowserWarning
@@ -632,6 +664,25 @@ func (c *Client) runSession(ctx context.Context) (connected bool, err error) {
 	}
 }
 
+// unprotectedHandler reports whether the server put a Handler tunnel online
+// without a password or single sign-on in front of it. Either mode will do:
+// a team's required single sign-on may replace the password asked for.
+func unprotectedHandler(t *tunnel, m protocol.Message) bool {
+	return t.spec.Handler != nil && m.AuthMode != protocol.AuthPassword && m.AuthMode != protocol.AuthOIDC
+}
+
+// refuseUnprotected marks such a tunnel failed, so no further stream reaches
+// its Handler, and unbinds it.
+func (c *Client) refuseUnprotected(ctl *protocol.Control, t *tunnel, publicURL string) tunnelView {
+	c.mu.Lock()
+	t.status, t.err = statusFailed, "the server did not protect "+publicURL+" with a password or single sign-on; refusing to serve files"
+	v := c.view(t)
+	c.mu.Unlock()
+	// A broken connection shows up in the session loop.
+	_ = ctl.Send(protocol.Message{Type: protocol.TypeUnbind, ID: t.spec.Name})
+	return v
+}
+
 func (c *Client) sendBind(ctl *protocol.Control, t *tunnel) error {
 	c.mu.Lock()
 	b := &protocol.Bind{
@@ -732,16 +783,18 @@ type tunnelView struct {
 	Rules                                                           *protocol.Rules
 	Pool                                                            bool
 	PoolSize                                                        int
+	Notes                                                           []string
+	Badge                                                           string
 }
 
 func (c *Client) view(t *tunnel) tunnelView {
 	return tunnelView{
-		Name: t.spec.Name, URL: t.url, Host: t.host, Local: t.spec.LocalAddr, AuthMode: t.authMode, Err: t.err,
-		Warning: t.warning, Static: t.static, TunnelID: t.tunnelID, BrowserWarning: t.warnPage,
+		Name: t.spec.Name, URL: t.url, Host: t.host, Local: cmp.Or(t.spec.Display, t.spec.LocalAddr), AuthMode: t.authMode,
+		Err: t.err, Warning: t.warning, Static: t.static, TunnelID: t.tunnelID, BrowserWarning: t.warnPage,
 		Proto: t.spec.proto(), RemotePort: t.remote, Terminated: t.termCfg != nil,
 		Online: t.status == statusOnline, Failed: t.status == statusFailed, Closed: t.status == statusClosed,
 		ExpiresAt: t.expires, RestartOnExpiry: t.spec.RestartOnExpiry, Rules: t.spec.Rules,
-		Pool: t.spec.Pool, PoolSize: t.poolSize,
+		Pool: t.spec.Pool, PoolSize: t.poolSize, Notes: t.spec.Notes, Badge: t.spec.Badge,
 	}
 }
 
@@ -776,9 +829,11 @@ func (c *Client) handleStream(s *yamux.Stream) {
 
 	t := c.byName[h.Tunnel]
 	active := false
+	var inproc *streamListener
 	if t != nil {
 		c.mu.Lock()
 		active = t.status == statusOnline || t.status == statusPending
+		inproc = t.inproc
 		c.mu.Unlock()
 	}
 	if !active {
@@ -795,6 +850,19 @@ func (c *Client) handleStream(s *yamux.Stream) {
 			return
 		}
 		target, addr = t.routes[h.Route-1], t.spec.Rules.Routes[h.Route-1].LocalAddr
+	}
+	if t.spec.Handler != nil {
+		// Served in this process: never dialed or piped. Error texts here
+		// reach the edge, so they never name a local path.
+		if inproc == nil || !inproc.open() {
+			_ = protocol.WriteStreamError(s, "the file share is shutting down")
+			s.Close()
+			return
+		}
+		if protocol.WriteStreamOK(s) != nil || !inproc.deliver(s) {
+			s.Close()
+		}
+		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	local, err := target.dial(ctx)

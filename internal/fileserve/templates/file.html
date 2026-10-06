@@ -1,0 +1,17 @@
+{{define "body"}}<body>
+{{sprite}}
+<main class="solo k-{{.Kind}}">
+{{template "basic"}}
+<h1 class="eyebrow"><a href="/">{{.Eyebrow}}</a></h1>
+{{if .Preview}}<img class="preview" src="{{.Href}}" alt="" loading="lazy">
+{{end}}<div class="tile"{{if .Preview}} hidden{{end}}><svg class="i lg" aria-hidden="true"><use href="#i-{{icon .Kind}}"/></svg></div>
+{{/* The same name box as listing rows: an RTL stem can't carry the extension to the left. */}}<p class="title"><span class="nm" dir="ltr"><span class="base" dir="auto">{{.Base}}</span><span class="ext" dir="ltr">{{.Ext}}</span></span></p>
+<p class="meta">{{.KindLabel}} · {{.SizeText}} · Modified <time datetime="{{.ModifiedISO}}" title="{{.ModifiedTitle}}">{{.ModifiedText}}</time></p>
+<div class="row"><a class="btn" href="{{.DownloadHref}}"><svg class="i" aria-hidden="true"><use href="#i-arrow-down-to-line"/></svg>Download</a>{{if .Inline}}<a class="btn ghost" href="{{.Href}}">Open</a>{{end}}</div>
+<div class="foot">
+{{range .Curl}}{{template "cmd" .}}<p class="note">curl asks for the password.</p>
+{{end}}<p>{{template "signed" .}}{{if .Identity.Method}} · {{end}}Served directly from the owner's computer · <span class="host" dir="auto">{{.Host}}</span></p>
+</div>
+</main>
+<div class="toasts js-only" aria-live="polite"></div>
+</body>{{end}}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strings"
@@ -22,6 +23,13 @@ func addRestartFlag(f *pflag.FlagSet, dst *bool) {
 
 // runSpec validates a single tunnel given on the command line and runs it.
 func runSpec(g *globals, spec client.TunnelSpec) error {
+	ctx, stop := signalContext()
+	defer stop()
+	return runSpecWith(ctx, g, spec, client.NewDisplay(g.logMode))
+}
+
+// runSpecWith is runSpec with the caller's context and display.
+func runSpecWith(ctx context.Context, g *globals, spec client.TunnelSpec, display *client.Display) error {
 	ips, err := client.NormalizeAllowIPs(spec.AllowIPs)
 	if err != nil {
 		return err
@@ -34,7 +42,7 @@ func runSpec(g *globals, spec client.TunnelSpec) error {
 	if err != nil {
 		return err
 	}
-	return runTunnels(g, cfg, p, []client.TunnelSpec{spec})
+	return runTunnelsWith(ctx, g, cfg, p, []client.TunnelSpec{spec}, display)
 }
 
 func portName(prefix, hostport string) string {

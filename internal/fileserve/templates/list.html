@@ -1,0 +1,40 @@
+{{define "body"}}<body data-path="{{.Path}}" data-total="{{.Total}}"{{if .Upload}} data-upload{{end}}{{if .Truncated}} data-truncated{{end}}>
+{{sprite}}
+<a class="skip" href="#files">Skip to files</a>
+<header class="top"><div class="wrap top-in">
+<h1 class="eyebrow"><a href="/">{{.Eyebrow}}</a></h1>
+{{template "who" .}}
+</div></header>
+<main class="wrap">
+{{template "basic"}}
+{{with .Flash}}<p class="banner" role="status"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>{{.}}</p>
+{{end}}{{if gt (len .Crumbs) 1}}<nav class="crumbs" aria-label="Folder path"><ol>{{range .Crumbs}}<li>{{if .Here}}<span aria-current="page" dir="auto">{{.Name}}</span>{{else}}<a href="{{.Href}}" dir="auto">{{.Name}}</a>{{end}}</li>{{end}}</ol></nav>
+{{end}}<div class="title-row">
+<div class="tb"><p class="title" dir="auto">{{.Current}}</p><p class="meta">{{.Meta}}</p></div>
+{{if .Upload}}<div class="actions js-only"{{if not .Total}} hidden{{end}}><span class="hint">or drop files anywhere on this page</span><button class="btn" type="button" data-pick><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Upload files</button></div>
+{{end}}</div>
+<section class="card" id="files" aria-label="Files" tabindex="-1">
+<div class="toolbar js-only"{{if not .Total}} hidden{{end}}><label class="filter"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input type="search" placeholder="Filter this folder" aria-label="Filter files and folders in this folder" autocomplete="off" spellcheck="false" data-filter><kbd aria-hidden="true">/</kbd></label><span class="count">{{plural .Total "item" "items"}}</span><select class="sort-m" aria-label="Sort" data-sort><option value="name:asc">Name (A–Z)</option><option value="name:desc">Name (Z–A)</option><option value="modified:desc">Newest first</option><option value="modified:asc">Oldest first</option><option value="size:desc">Largest first</option><option value="size:asc">Smallest first</option></select></div>
+<table class="files"{{if not .Entries}} hidden{{end}}>
+<thead><tr>{{range .Columns}}<th scope="col" aria-sort="{{.Sort}}"{{if ne .Key "name"}} class="num"{{end}}><a href="{{.Href}}">{{.Label}}</a></th>{{end}}<th scope="col" class="act"><span class="sr-only">Actions</span></th></tr></thead>
+<tbody>{{/* A name box is dir=ltr and isolates only the stem (dir=auto): a stem in a right-to-left script still reads naturally, but it can't carry the real extension to the left. */}}
+{{range .Entries}}<tr class="k-{{.Kind}}"{{if not .IsDir}} data-size="{{.Size}}"{{end}}><td class="name"><a href="{{.Href}}" title="{{.Name}}"><svg class="i" aria-hidden="true"><use href="#i-{{icon .Kind}}"/></svg><span class="two"><span class="nm" dir="ltr"><span class="base" dir="auto">{{.Base}}</span><span class="ext" dir="ltr">{{.Ext}}</span></span><span class="sub">{{if not .IsDir}}{{.SizeText}} · {{end}}<time datetime="{{.ModifiedISO}}">{{.ModifiedText}}</time></span></span></a></td><td class="num"{{if .IsDir}} aria-label="Folder"{{end}}>{{.SizeText}}</td><td class="num"><time datetime="{{.ModifiedISO}}" title="{{.ModifiedTitle}}">{{.ModifiedText}}</time></td><td class="act">{{if not .IsDir}}<a class="ib" href="{{.DownloadHref}}" aria-label="Download {{.Name}}"><svg class="i" aria-hidden="true"><use href="#i-arrow-down-to-line"/></svg></a>{{end}}</td></tr>
+{{end}}{{with .Notice}}<tr class="notice"><td colspan="4">{{.}}<span class="js-only"> Type in the filter to search all of them.</span></td></tr>
+{{end}}</tbody>
+</table>
+{{if .Upload}}<div class="empty drop-zone js-only" data-empty{{if .Total}} hidden{{end}}><div class="empty-ic"><svg class="i lg" aria-hidden="true"><use href="#i-cloud-upload"/></svg></div><h2>Drop files here</h2><p>or choose them from your device. They are added to <b dir="auto">{{.Current}}</b>; existing files are never replaced.</p><button class="btn" type="button" data-pick>Choose files</button></div>
+{{end}}<div class="empty{{if .Upload}} nojs-only{{end}}" data-empty{{if .Total}} hidden{{end}}><div class="empty-ic"><svg class="i lg" aria-hidden="true"><use href="#i-folder"/></svg></div><h2>This folder is empty</h2><p>There's nothing to download here yet.</p></div>
+{{if .Upload}}<form class="upload" method="post" action="{{.Path}}" enctype="multipart/form-data"><label for="upload-files">Upload files to <b dir="auto">{{.Current}}</b></label><input id="upload-files" type="file" name="file" multiple required><button class="btn" type="submit">Upload</button></form>
+{{end}}</section>
+<footer class="foot">
+{{with .Curl}}<details class="curl"{{if or (not $.Total) $.Upload}} open{{end}}><summary><svg class="i sm" aria-hidden="true"><use href="#i-terminal"/></svg>Use curl</summary>
+<p>curl asks for the password.</p>
+{{range .}}{{template "cmd" .}}{{end}}</details>
+{{end}}<p class="fine"><span class="eo"><svg class="i sm" aria-hidden="true"><use href="#i-eye-off"/></svg>Dotfiles and secret files are never shown.</span><span>Served directly from the owner's computer · <span dir="auto">{{.Host}}</span></span></p>
+</footer>
+</main>
+<div class="sr-only" aria-live="polite" data-say></div>
+<div class="toasts js-only" aria-live="polite"></div>
+{{if .Upload}}<input type="file" multiple hidden data-pick-input>
+{{end}}<template data-row><tr><td class="name"><a><svg class="i" aria-hidden="true"><use/></svg><span class="two"><span class="nm" dir="ltr"><span class="base" dir="auto"></span><span class="ext" dir="ltr"></span></span><span class="sub"></span></span></a></td><td class="num"></td><td class="num"><time></time></td><td class="act"><a class="ib" aria-label="Download"><svg class="i" aria-hidden="true"><use href="#i-arrow-down-to-line"/></svg></a></td></tr></template>
+</body>{{end}}

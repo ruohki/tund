@@ -1,0 +1,28 @@
+{{define "page"}}<!doctype html>
+<html lang="en" class="nojs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f766e'/%3E%3Cpath d='M18 17a1 1 0 0 0 1-1V9.5a1 1 0 0 0-1-1h-4.6a1 1 0 0 1-.85-.45l-.7-1.1A1 1 0 0 0 11 6.5H6a1 1 0 0 0-1 1V16a1 1 0 0 0 1 1Z' fill='none' stroke='white' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>{{.Title}}</title>
+<style nonce="{{.Nonce}}">{{css}}</style>
+<script nonce="{{.Nonce}}">{{script}}</script>
+</head>
+{{template "body" .}}
+</html>
+{{end}}
+
+{{/* basic is the error boundary's notice: the script unhides it when it fails. */}}
+{{define "basic"}}<p class="banner err" id="basic" role="alert" hidden><svg class="i" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Something went wrong on this page, so it switched to basic mode. Reload to try again.</p>{{end}}
+
+{{/* who is the visitor's chip in the top bar. */}}
+{{define "who"}}{{with .Identity}}{{if .Method}}<div class="who">{{if eq .Method "password"}}<svg class="i sm" aria-hidden="true"><use href="#i-lock"/></svg><span class="lbl">{{.Label}}</span>{{else}}{{with .Initial}}<span class="avatar" aria-hidden="true">{{.}}</span>{{end}}<span class="user" dir="auto"{{if or .Email .Name .Username}} title="Signed in as {{.Label}}"{{end}}>{{.Label}}</span>{{end}}<a class="signout" href="/_tund/auth/logout" aria-label="Sign out"><svg class="i sm" aria-hidden="true"><use href="#i-log-out"/></svg><span>Sign out</span></a></div>{{end}}{{end}}{{end}}
+
+{{/* signed is the visitor in a line of text. */}}
+{{define "signed"}}{{with .Identity}}{{if .Method}}{{if and (eq .Method "oidc") (or .Email .Name .Username)}}Signed in as <span dir="auto">{{.Label}}</span>{{else}}{{.Label}}{{end}} · <a href="/_tund/auth/logout">Sign out</a>{{end}}{{end}}{{end}}
+
+{{/* cmd is a command block with a copy button. */}}
+{{define "cmd"}}<div class="cmd"><pre><code><span class="c"># {{.Comment}}</span>
+{{.Command}}</code></pre><button class="ib js-only" type="button" data-cmd aria-label="Copy command"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg></button></div>
+{{end}}

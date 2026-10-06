@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"strings"
 
 	"tund/internal/protocol"
@@ -80,6 +81,11 @@ func (s TunnelSpec) proto() string {
 
 // Validate checks that the options fit the tunnel's protocol.
 func (s TunnelSpec) Validate() error {
+	if s.Handler != nil {
+		if err := s.validateHandler(); err != nil {
+			return err
+		}
+	}
 	named := s.Subdomain != "" || s.Hostname != ""
 	if s.Subdomain != "" && s.Hostname != "" {
 		return errors.New("use either a subdomain or a domain, not both")
@@ -137,6 +143,29 @@ func (s TunnelSpec) Validate() error {
 	return nil
 }
 
+// validateHandler checks a spec served in this process (Handler): it is
+// never public, and the edge must pass its requests on unchanged.
+func (s TunnelSpec) validateHandler() error {
+	switch {
+	case s.proto() != protocol.ProtoHTTP:
+		return errors.New("a tunnel served in-process (Handler) must be an http tunnel")
+	case s.Auth == nil || (s.Auth.Mode != protocol.AuthPassword && s.Auth.Mode != protocol.AuthOIDC):
+		return errors.New("a tunnel served in-process (Handler) needs a password or OIDC: it is never public")
+	case s.Rules != nil:
+		return errors.New("traffic rules (headers, CORS, rate limit, routes) don't apply to a tunnel served in-process (Handler)")
+	case s.Pool:
+		return errors.New("load balancing (pool) doesn't apply to a tunnel served in-process (Handler)")
+	case s.HostHeader != "":
+		return errors.New("host header rewriting doesn't apply to a tunnel served in-process (Handler)")
+	case s.TerminateCert != "" || s.TerminateKey != "":
+		return errors.New("TLS termination doesn't apply to a tunnel served in-process (Handler)")
+	}
+	if u, err := url.Parse(s.LocalAddr); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("the local address of a tunnel served in-process (Handler) is a label for the server and must be an http(s) URL like http://file-share, not %q", s.LocalAddr)
+	}
+	return nil
+}
+
 // terminationConfig loads the certificate used to terminate TLS at the client.
 func terminationConfig(certFile, keyFile string) (*tls.Config, error) {
 	if certFile == "" {
@@ -149,8 +178,12 @@ func terminationConfig(certFile, keyFile string) (*tls.Config, error) {
 	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
 }
 
-// targetFor returns how to reach the local service of a spec.
+// targetFor returns how to reach the local service of a spec; nothing for a
+// Handler, which is never dialed.
 func targetFor(s TunnelSpec) (localTarget, error) {
+	if s.Handler != nil {
+		return localTarget{}, nil
+	}
 	if s.proto() == protocol.ProtoHTTP {
 		return parseTarget(s.LocalAddr)
 	}

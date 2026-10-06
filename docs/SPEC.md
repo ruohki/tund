@@ -122,6 +122,19 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 
 CLI: `--route /api=8080`, `--request-header "Name: value"`, `--request-header-remove Name`, `--response-header …`, `--response-header-remove …`, `--cors <origin>`, `--rate-limit 100/m`; `tund.yml` keys `routes` (`path`, `addr`, `strip_prefix`), `request_headers`/`response_headers` (`set`, `remove`), `cors`, `rate_limit`.
 
+## File shares (`tund serve`)
+
+Client-side only: no protocol or server change, so shares work with every server.
+
+* `tund serve <file|folder>` binds an ordinary `http` tunnel whose `local_addr` is the fixed label `http://file-share`: stored and shown like any local address, never dialed. The local path never leaves the client; the CLI shows it instead of `local_addr`. The bind always carries `auth`: `password` (at least 8 characters) or `oidc` with an allow list (`--oidc-allow '*'` sends an empty one). It sends `random: true` unless `--subdomain` or `--domain` is given, so a share never lands on the account's default static hostname; the remembered random label is kept per shared path. `--pin` needs `--subdomain` or `--domain`: a pinned random hostname would become the account's default.
+* When `bound.auth_mode` is neither `password` nor `oidc`, the client sends `unbind` and reports the tunnel as failed instead of serving files. A team's required single sign-on replacing the password is fine.
+* Data streams are answered by an HTTP/1.1 server inside the client (`internal/fileserve`); nothing listens on a local port. Streams with a `route` are refused.
+* The handler answers only requests that passed the access policy: it requires `X-Tund-Auth` (`password` or `oidc`) on every request and refuses replays, because replays skip the policy. The edge sends them with `X-Forwarded-For: replay`, so anything but exactly one valid IP address gets 403. Pages and the upload log take the visitor's identity from each request's `X-Tund-*` headers.
+* The edge records these requests like any other, including the first `TUND_CAPTURE_MAX_BODY` bytes of every file downloaded or uploaded.
+* For scripts: a folder URL (trailing `/`) lists as text (one name per line, folders end with `/`), JSON (`?format=json` or `Accept: application/json`: `{"share","path","upload","total","truncated","entries":[{"name","href","type","kind","size","modified"}]}`) or HTML. With `--upload`, `PUT /dir/name` and multipart `POST /dir/` save files and answer `201` with `Location`; a taken name gets a number (`name (1).ext`), nothing is replaced. `PUT` to a folder's URL without the trailing `/` answers `409` before reading the body. Uploads can't be resumed: a `Content-Range` other than the whole body (`curl -C <offset>`) answers `400`.
+* Downloads carry `Content-Disposition` with an ASCII `filename=` (letters outside ASCII become `_`; that is the name `curl -OJ` saves), plus the real name in `filename*` when it differs.
+* Hidden entries answer `404` exactly like missing paths: dotfiles, secret names, and files with key-like extensions (`.pem`, `.key`, …) whose content holds a secret; listings leave all of them out. A listed file whose content turns out to hold a secret answers `403`.
+
 ## Server environment
 
 | var | default | |

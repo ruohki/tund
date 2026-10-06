@@ -3,7 +3,9 @@ package client
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 
 	"tund/internal/protocol"
@@ -87,6 +89,24 @@ func TestBuildAuth(t *testing.T) {
 		if _, err := BuildAuth(bad[0].(string), bad[1].(string), allow); err == nil {
 			t.Fatalf("expected error for %v", bad)
 		}
+	}
+}
+
+func TestRandomPassword(t *testing.T) {
+	re := regexp.MustCompile(`^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$`)
+	seen, chars := map[string]bool{}, map[rune]bool{}
+	for range 200 {
+		pw := RandomPassword()
+		if !re.MatchString(pw) || seen[pw] {
+			t.Fatalf("RandomPassword = %q", pw)
+		}
+		seen[pw] = true
+		for _, r := range strings.ReplaceAll(pw, "-", "") {
+			chars[r] = true
+		}
+	}
+	if len(chars) != 31 {
+		t.Errorf("%d of 31 characters used", len(chars))
 	}
 }
 

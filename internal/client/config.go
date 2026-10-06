@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -203,6 +204,28 @@ func BuildAuth(password, oidc string, allow []string) (*protocol.Auth, error) {
 		return nil, errors.New("an allow list needs an OIDC provider (--oidc <slug>)")
 	}
 	return nil, nil
+}
+
+// RandomPassword returns a password that is easy to read out and type: 12
+// characters without look-alikes (about 59 bits), dashed every 4, e.g.
+// "kq7m-x2pa-9fhd".
+func RandomPassword() string {
+	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+	const limit = 256 / len(alphabet) * len(alphabet) // bytes above would favor some characters
+	var b strings.Builder
+	var r [1]byte
+	for n := 0; n < 12; {
+		_, _ = rand.Read(r[:])
+		if int(r[0]) >= limit {
+			continue
+		}
+		if n > 0 && n%4 == 0 {
+			b.WriteByte('-')
+		}
+		b.WriteByte(alphabet[int(r[0])%len(alphabet)])
+		n++
+	}
+	return b.String()
 }
 
 // ParseTarget normalizes a local address for a protocol: http takes a port,

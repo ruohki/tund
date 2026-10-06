@@ -1,15 +1,18 @@
 package client
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/term"
@@ -237,6 +240,9 @@ func (d *Display) forwarding(t tunnelView) string {
 			line += "  " + d.c(cyan, "[passthrough]")
 		}
 	}
+	if t.Badge != "" {
+		line += "  " + d.c(yellow, "["+t.Badge+"]")
+	}
 	if badge := d.authBadge(t.AuthMode); badge != "" {
 		line += "  " + badge
 	}
@@ -251,6 +257,9 @@ func boolKV(b bool) string {
 }
 
 func (d *Display) warningRow(t tunnelView) {
+	for _, n := range t.Notes {
+		d.println(d.row("", d.c(dim, n)))
+	}
 	if t.Pool {
 		switch {
 		case t.PoolSize > 1:
@@ -358,7 +367,7 @@ func (d *Display) Header(w welcome, ts []tunnelView) {
 		for _, t := range ts {
 			switch {
 			case t.Online:
-				d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t), "inspect", inspectURL(w.dashboardURL, t.inspectHost()))
+				d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "badge", t.Badge, "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t), "inspect", inspectURL(w.dashboardURL, t.inspectHost()))
 			case t.Failed:
 				d.logf("tunnel failed", "name", t.Name, "local", t.Local, "error", t.Err)
 			}
@@ -435,7 +444,7 @@ func (d *Display) TunnelOnline(t tunnelView) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.pretty {
-		d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t))
+		d.logf("tunnel online", "name", t.Name, "url", t.URL, "local", t.Local, "auth", t.AuthMode, "static", boolKV(t.Static), "badge", t.Badge, "browser_warning", boolKV(t.BrowserWarning), "warning", t.Warning, "expires_at", expiresKV(t))
 		return
 	}
 	d.println(d.row("Forwarding", d.forwarding(t)))
@@ -530,6 +539,96 @@ func (d *Display) Connection(t tunnelView, ev protocol.ConnEvent) {
 	}
 	traffic := "↑" + humanBytes(ev.BytesIn) + " ↓" + humanBytes(ev.BytesOut)
 	d.logLine(t, strings.ToUpper(t.Proto), ev.RemoteAddr, traffic, color, ev.DurationMS, ev.Error)
+}
+
+// UploadEvent is one upload attempt on a file share (see Display.Upload).
+type UploadEvent struct {
+	Path      string // share-relative with a leading "/", e.g. "/inbox/report (1).pdf"
+	Requested string // the file name the visitor sent
+	Size      int64  // bytes received
+	Renamed   bool   // the name was taken, so the file got a number: "report (1).pdf"
+	Taken     string // when Renamed: the name that was taken (Requested after cleaning up)
+	User      string // the signed-in visitor; empty for password visitors
+	Remote    string // the visitor's IP address
+	Error     string // why it failed; empty when the file was saved
+}
+
+// Upload logs an upload to a file share as saved or failed; log lines carry
+// requested= only when the name changed. Visitors pick the names, so control
+// and other invisible characters are shown escaped.
+func (d *Display) Upload(ev UploadEvent) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	p, requested, user, remote, errMsg := printable(ev.Path), printable(ev.Requested), printable(ev.User), printable(ev.Remote), printable(ev.Error)
+	if !d.pretty {
+		if requested == p[strings.LastIndexByte(p, '/')+1:] {
+			requested = "" // only worth a field when the name changed
+		}
+		size := strconv.FormatInt(ev.Size, 10)
+		if errMsg == "" {
+			d.logf("upload saved", "path", p, "requested", requested, "size", size, "user", user, "remote", remote)
+		} else {
+			d.logf("upload failed", "path", p, "requested", requested, "received", size, "user", user, "remote", remote, "error", errMsg)
+		}
+		return
+	}
+	label, color := "↑ saved", green
+	var parts []string
+	if errMsg == "" {
+		parts = append(parts, humanBytes(ev.Size), cmp.Or(user, remote))
+		if ev.Renamed {
+			// Name the file that was there: cleaning up may have changed
+			// the name the visitor sent ("a:b.txt" is saved as "a_b.txt").
+			if taken := cmp.Or(printable(ev.Taken), requested); taken != "" {
+				parts = append(parts, taken+" was taken")
+			}
+		}
+	} else {
+		label, color = "↑ failed", red
+		if ev.Size > 0 {
+			parts = append(parts, humanBytes(ev.Size)+" received")
+		}
+		parts = append(parts, cmp.Or(user, remote), errMsg)
+	}
+	line := d.c(dim, time.Now().Format("15:04:05")) + "  " + d.c(color, padRight(label, 8)) + "  " + p
+	if rest := strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), " · "); rest != "" {
+		if p != "" {
+			rest = " · " + rest
+		}
+		line += d.c(dim, rest)
+	}
+	d.println(line)
+}
+
+// Pretty reports whether d draws the interactive view; false means plain log
+// lines.
+func (d *Display) Pretty() bool { return d.pretty }
+
+// Printable escapes text from elsewhere, like a file name, the way the
+// client's output does (see printable).
+func Printable(s string) string { return printable(s) }
+
+// HumanBytes formats a size like the rest of the client's output: "2.4 MB".
+func HumanBytes(n int64) string { return humanBytes(n) }
+
+// printable escapes control, format and other invisible characters (\x1b,
+// \u202e) so that text from visitors can't drive the terminal or reorder a
+// line; invalid UTF-8 becomes U+FFFD.
+func printable(s string) string {
+	invisible := func(r rune) bool { return !unicode.IsGraphic(r) }
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, invisible) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if !invisible(r) {
+			b.WriteRune(r)
+			continue
+		}
+		q := strconv.QuoteRune(r) // '\x1b'
+		b.WriteString(q[1 : len(q)-1])
+	}
+	return b.String()
 }
 
 // logLine prints "time  [tunnel]  METHOD  path  status  duration  error".

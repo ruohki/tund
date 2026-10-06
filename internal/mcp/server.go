@@ -5,7 +5,6 @@ package tundmcp
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -443,21 +442,6 @@ func orDefault(s, d string) string {
 var oidcHeaders = []string{"X-Tund-Auth", "X-Tund-User-Email", "X-Tund-User-Email-Verified", "X-Tund-User-Name",
 	"X-Tund-User-Username", "X-Tund-User-Id", "X-Tund-User-Groups", "X-Tund-Idp"}
 
-const passwordAlphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-
-func randomPassword() string {
-	b := make([]byte, 12)
-	_, _ = rand.Read(b)
-	var out strings.Builder
-	for i, c := range b {
-		if i > 0 && i%4 == 0 {
-			out.WriteByte('-')
-		}
-		out.WriteByte(passwordAlphabet[int(c)%len(passwordAlphabet)])
-	}
-	return out.String()
-}
-
 func isLoopback(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
@@ -516,7 +500,7 @@ func (s *Server) startTunnel(ctx context.Context, _ *mcp.CallToolRequest, in Sta
 		return nil, TunnelOut{}, errors.New("tund mcp runs with --require-password, but tcp/tls tunnels cannot have a password: pass allow_ips to restrict who can connect")
 	}
 	if auth == nil && s.opts.RequirePassword && proto == protocol.ProtoHTTP {
-		lt.password = randomPassword()
+		lt.password = client.RandomPassword()
 		auth = &protocol.Auth{Mode: protocol.AuthPassword, Password: lt.password}
 		lt.notes = append(lt.notes, "a random password was set because tund mcp runs with --require-password; share it with the people who should get access")
 	}

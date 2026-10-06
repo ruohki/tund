@@ -377,9 +377,6 @@ func TestStartTunnelGuards(t *testing.T) {
 			t.Errorf("start_tunnel %v should fail, got %s", args, text)
 		}
 	}
-	if pw := randomPassword(); len(pw) != 14 || strings.Count(pw, "-") != 2 {
-		t.Errorf("randomPassword = %q", pw)
-	}
 }
 
 func TestSignedIn(t *testing.T) {
