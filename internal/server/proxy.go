@@ -165,16 +165,30 @@ func (s *Server) setupProxy(t *Tunnel) {
 					"Host": t.Hostname, "Local": local, "Detail": le.Msg,
 				})
 			default:
+				msg := explainProxyError(err, r)
 				if ex != nil {
-					ex.err = err.Error()
+					ex.err = msg
 					ex.status = http.StatusBadGateway
 				}
 				s.renderPage(w, r, http.StatusBadGateway, pageBadGateway, map[string]any{
-					"Host": t.Hostname, "Local": local, "Detail": err.Error(),
+					"Host": t.Hostname, "Local": local, "Detail": msg,
 				})
 			}
 		},
 	}
+}
+
+// explainProxyError names the usual culprit behind a cryptic transport error.
+// The Next.js dev server (16+) refuses /_next/* requests, HMR WebSocket
+// included, from hosts missing in allowedDevOrigins; on an upgrade it writes a
+// bare "Unauthorized" without a status line.
+func explainProxyError(err error, r *http.Request) string {
+	msg := err.Error()
+	if strings.Contains(msg, `malformed HTTP response "Unauthorized"`) && strings.Contains(r.URL.Path, "/_next") {
+		return `the Next.js dev server blocked this request; add "` + canonicalHost(r.Host) +
+			`" to allowedDevOrigins in next.config and restart it`
+	}
+	return msg
 }
 
 // serveTunnel proxies r through t and records the exchange.
