@@ -36,7 +36,7 @@ Requirements: a server with Docker, ports 80 and 443 free, and DNS.
 
 1. **DNS.** Create a wildcard record for the base domain, e.g. `*.tund.example.com  A  <server ip>`. The dashboard lives at `dashboard.tund.example.com` (covered by the wildcard); to put it on the bare domain instead, also add `tund.example.com  A  <server ip>` and set `TUND_DASHBOARD_HOST=tund.example.com`.
 2. **Configure.** Run `cp .env.example .env`, then set `TUND_BASE_DOMAIN`, `TUND_SERVER_IP` and three secrets (`openssl rand -hex 32`).
-3. **Start.** Run `docker compose pull && docker compose up -d`. This uses the published images `ghcr.io/ruohki/tund-server` and `ghcr.io/ruohki/tund-dashboard`; use `docker compose up -d --build` to build from a checkout. Server and dashboard run with host networking (the edge needs 80, 443 and the TCP port range). All internal ports bind to 127.0.0.1: dashboard 3000, internal API 4040, Postgres 55432.
+3. **Start.** Run `docker compose pull && docker compose up -d`. This uses the published images `chicor.ee/tund/server` and `chicor.ee/tund/dashboard`; use `docker compose up -d --build` to build from a checkout. Server and dashboard run with host networking (the edge needs 80, 443 and the TCP port range). All internal ports bind to 127.0.0.1: dashboard 3000, internal API 4040, Postgres 55432.
 4. Open `https://dashboard.<base>` and create the first account; it becomes the admin. Further sign-ups are disabled unless `TUND_ALLOW_SIGNUP=true`; admins can create users under *Admin*.
 5. Users run `tund login https://dashboard.<base>` once, or install via `https://dashboard.<base>/install.sh`, which points the CLI at your server.
 
@@ -279,7 +279,7 @@ A public tunnel service will be used for phishing. tund layers several defences:
 
 ## Releases
 
-Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt` and `version.txt`, and multi-arch images to GHCR (`:<version>`, `:latest`). Pushes to `main` publish `:main` images. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
+Tagging `v*` makes GitHub Actions build the client for Linux, macOS and Windows (amd64 and arm64) into a GitHub Release with `checksums.txt` and `version.txt`, and multi-arch images to the Chicorée registry at chicor.ee: `chicor.ee/tund/server` and `chicor.ee/tund/dashboard` (`:<version>`, `:<major>.<minor>`, `:latest`). Pushes to `main` publish `:main` and `:main-<sha>` images. The workflow pushes as the service account `tund/github-ci`; its token is the repository secret `CHICOREE_TOKEN`. The install scripts and `/_tund/downloads/…` fetch binaries from the latest release (`TUND_DOWNLOAD_BASE_URL`) and verify their checksums.
 
 ## Development
 

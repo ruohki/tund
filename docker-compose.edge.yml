@@ -12,7 +12,7 @@
 # ideally over a private network such as WireGuard.
 services:
   server:
-    image: ghcr.io/ruohki/tund-server:${TUND_IMAGE_TAG:-latest}
+    image: chicor.ee/tund/server:${TUND_IMAGE_TAG:-latest}
     restart: unless-stopped
     network_mode: host
     environment:

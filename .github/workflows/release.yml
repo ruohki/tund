@@ -1,7 +1,9 @@
 name: Release
 
 # Tags v* publish client binaries (GitHub Release) and versioned images;
-# pushes to main publish :main images.
+# pushes to main publish :main images. Images go to the Chicorée registry
+# (chicor.ee/tund/server, chicor.ee/tund/dashboard), pushed by the service
+# account tund/github-ci whose token is the repository secret CHICOREE_TOKEN.
 on:
   push:
     branches: [main]
@@ -10,10 +12,11 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: chicor.ee
+  ORG: tund
+  REGISTRY_USER: tund/github-ci
   # Server the clients talk to when nothing else is configured.
   DEFAULT_SERVER: https://tund.io
 
@@ -56,23 +59,23 @@ jobs:
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ secrets.CHICOREE_TOKEN }}
       - name: Names
         id: names
         run: |
           version="${GITHUB_REF_NAME#v}"; [ "${GITHUB_REF_TYPE}" = tag ] || version="main-${GITHUB_SHA::7}"
           platform="${{ matrix.platform }}"
           {
-            echo "image=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/tund-${{ matrix.component }}"
+            echo "image=${REGISTRY}/${ORG}/${{ matrix.component }}"
             echo "context=${{ matrix.component == 'dashboard' && 'dashboard' || '.' }}"
             echo "arch=${platform#linux/}"
             echo "version=$version"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -80,7 +83,6 @@ jobs:
           context: ${{ steps.names.outputs.context }}
           platforms: ${{ matrix.platform }}
           build-args: VERSION=${{ steps.names.outputs.version }}
-          # Links the package to this (public) repository on GHCR.
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=tund ${{ matrix.component }}
@@ -115,13 +117,13 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ secrets.CHICOREE_TOKEN }}
       - name: Tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/tund-${{ matrix.component }}
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ matrix.component }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -131,7 +133,7 @@ jobs:
       - name: Create manifest list
         working-directory: /tmp/digests
         run: |
-          image="${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/tund-${{ matrix.component }}"
+          image="${REGISTRY}/${ORG}/${{ matrix.component }}"
           # Word splitting is intended: one -t per tag, one argument per digest.
           # shellcheck disable=SC2046
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \

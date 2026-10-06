@@ -25,7 +25,7 @@ services:
       retries: 20
 
   server:
-    image: ghcr.io/ruohki/tund-server:${TUND_IMAGE_TAG:-latest}
+    image: chicor.ee/tund/server:${TUND_IMAGE_TAG:-latest}
     build:
       context: .
       args:
@@ -91,7 +91,7 @@ services:
       - tund-data:/data
 
   dashboard:
-    image: ghcr.io/ruohki/tund-dashboard:${TUND_IMAGE_TAG:-latest}
+    image: chicor.ee/tund/dashboard:${TUND_IMAGE_TAG:-latest}
     build: ./dashboard
     restart: unless-stopped
     network_mode: host
