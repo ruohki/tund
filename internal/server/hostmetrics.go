@@ -42,6 +42,7 @@ type hostCollector struct {
 	publicIP     string
 	capacityMbps int
 	procDir      string
+	now          func() time.Time // nil = time.Now; tests fix the clock
 
 	mu   sync.Mutex
 	prev *hostSample
@@ -59,7 +60,11 @@ func newHostCollector(cfg *Config) *hostCollector {
 // the previous call. tunnelBytes is the node's running total of tunnel traffic.
 func (h *hostCollector) collect(tunnelBytes int64, sessions, tunnels int) nodeMetrics {
 	m := nodeMetrics{PublicIP: h.publicIP, CapacityMbps: h.capacityMbps, CPUs: runtime.NumCPU(), Sessions: sessions, Tunnels: tunnels}
-	cur := hostSample{at: time.Now(), tunnelBytes: tunnelBytes}
+	now := time.Now
+	if h.now != nil {
+		now = h.now
+	}
+	cur := hostSample{at: now(), tunnelBytes: tunnelBytes}
 	if s, err := os.ReadFile(h.procDir + "/stat"); err == nil {
 		cur.cpuBusy, cur.cpuTotal = parseCPUStat(string(s))
 	}

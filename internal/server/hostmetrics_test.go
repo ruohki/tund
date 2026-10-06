@@ -67,7 +67,8 @@ func TestHostCollectorRates(t *testing.T) {
 	write("meminfo", "MemTotal: 1000 kB\nMemAvailable: 250 kB\n")
 	write("net/dev", "  eth9: 1000 1 0 0 0 0 0 0 4000 1 0 0 0 0 0 0\n")
 
-	h := &hostCollector{procDir: dir, capacityMbps: 1000}
+	clock := time.Unix(1_700_000_000, 0)
+	h := &hostCollector{procDir: dir, capacityMbps: 1000, now: func() time.Time { return clock }}
 	first := h.collect(0, 2, 3)
 	if first.CPUPct != nil || first.NetInRate != nil || first.TunnelRate != nil {
 		t.Fatal("first sample must not report rates")
@@ -76,7 +77,7 @@ func TestHostCollectorRates(t *testing.T) {
 		t.Fatalf("first sample: %+v", first)
 	}
 
-	h.prev.at = h.prev.at.Add(-10 * time.Second) // pretend ten seconds passed
+	clock = clock.Add(10 * time.Second)
 	write("stat", "cpu  150 0 150 900 0 0 0 0 0 0\n")
 	write("net/dev", "  eth9: 11000 1 0 0 0 0 0 0 24000 1 0 0 0 0 0 0\n")
 	m := h.collect(50_000, 2, 3)
