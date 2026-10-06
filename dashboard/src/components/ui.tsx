@@ -65,12 +65,14 @@ export function Field({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <label htmlFor={htmlFor} className="text-[13px] font-medium text-ink">
+    // Margins, not gap: password managers insert empty elements after inputs,
+    // and each would add a gap, so fields in a row would no longer line up.
+    <div className={cn("flex flex-col", className)}>
+      <label htmlFor={htmlFor} className="mb-1.5 text-[13px] font-medium text-ink">
         {label}
       </label>
       {children}
-      {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+      {hint ? <p className="mt-1.5 text-xs text-muted">{hint}</p> : null}
     </div>
   );
 }
