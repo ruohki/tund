@@ -18,6 +18,8 @@ import (
 	hetzner "github.com/libdns/hetzner/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"tund/internal/protocol"
 )
 
 // Certs manages TLS certificates. Tunnel hostnames under the base domain are
@@ -181,6 +183,14 @@ func (c *Certs) decide(ctx context.Context, name string) error {
 	}
 	if s.reg.Lookup(name) != nil {
 		return nil
+	}
+	// Bound on another node: visitors who land here are relayed to it. Without
+	// this, a domain matched by a wildcard record only gets a certificate on the
+	// node holding the tunnel, and every handshake on the others fails.
+	if s.cluster != nil {
+		if _, proto, ok := s.cluster.ownerOf(ctx, name); ok && proto == protocol.ProtoHTTP {
+			return nil
+		}
 	}
 	if c.underBase(name) {
 		if d, err := s.store.ResolveDomain(ctx, name); err == nil && d.Hostname == name {
