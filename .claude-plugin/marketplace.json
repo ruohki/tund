@@ -1,0 +1,16 @@
+{
+  "name": "tund",
+  "description": "Agent skills for tund: share local work through a protected public HTTPS link",
+  "owner": {
+    "name": "ruohki"
+  },
+  "plugins": [
+    {
+      "name": "tund",
+      "description": "Share a website you are building (tund http) or a file or folder (tund serve) behind a password or single sign-on, and report the link and how to get in",
+      "source": "./skills",
+      "strict": false,
+      "skills": ["./tund-share"]
+    }
+  ]
+}

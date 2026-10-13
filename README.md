@@ -234,6 +234,17 @@ claude mcp add tund -- tund mcp                      # Claude Code
 
 Tunnels started by an agent live as long as its `tund mcp` process. `--allow-ports 3000,5173` restricts which local ports an agent may expose, and `--require-password` puts a random password on every tunnel it opens.
 
+### Skill
+
+Agents with a shell can also share through the CLI. The `tund-share` skill in [`skills/tund-share`](skills/tund-share/SKILL.md) teaches them to use `tund http` for the app they are building and `tund serve` for files such as a folder of designs. Every share goes behind a generated password, or single sign-on where you use it, and the agent tells you the link and the password and stops the share when you are done.
+
+```sh
+/plugin install tund --marketplace ruohki/tund     # Claude Code, typed in a session (2.1.275 or later)
+npx skills add ruohki/tund                         # Cursor, Codex and other agents
+```
+
+On older Claude Code versions, run `claude plugin marketplace add ruohki/tund` and then `claude plugin install tund@tund`. To install by hand, copy `skills/tund-share` into your agent's skills folder, e.g. `~/.claude/skills/`.
+
 ## HTTP API
 
 Auth tokens also authenticate a small JSON API on the dashboard host, `https://tund.io/_tund/api/v1` (Bearer token). It covers `GET /me`, `GET /tunnels`, `POST /tunnels/{id}/stop`, `GET /requests` (filters: hostname, tunnel_id, method, status, path, limit, before), `GET /requests/{id}` (headers and decoded bodies) and `POST /requests/{id}/replay`. See `docs/SPEC.md` for the fields.
