@@ -80,7 +80,7 @@ export default async function GetStartedPage() {
         actions={
           <>
             <ButtonLink href="#mcp" variant="ghost" size="sm">
-              AI agents (MCP)
+              AI agents
             </ButtonLink>
             <ButtonLink href="#api" variant="ghost" size="sm">
               HTTP API

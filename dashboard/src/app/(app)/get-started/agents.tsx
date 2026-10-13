@@ -34,7 +34,7 @@ export function McpSection() {
   return (
     <Panel
       id="mcp"
-      title="AI agents (MCP)"
+      title="AI agents"
       description="tund mcp lets coding agents such as Claude Code, Cursor or Codex share what they build: they start a tunnel, hand you the URL and read the captured requests while they debug."
       className="mb-6"
     >
@@ -98,6 +98,30 @@ export function McpSection() {
                 </div>
               ))}
             </dl>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 border-t border-line p-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div>
+          <p className="mb-2 text-[14px] font-medium text-ink">Skill</p>
+          <p className="text-[13px] text-ink-2">
+            Agents with a shell can also share through the CLI. The{" "}
+            <code className="font-mono text-[12.5px] text-ink">tund-share</code> skill teaches them to use{" "}
+            <code className="font-mono text-[12.5px] text-ink">tund http</code> for the app they are building and{" "}
+            <code className="font-mono text-[12.5px] text-ink">tund serve</code> for files such as a folder of designs.
+            Every share goes behind a generated password, or single sign-on where you use it, and the agent tells you
+            the link and the password.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="mb-2 text-[12.5px] text-muted">Claude Code</p>
+            <Command>claude plugin install tund --marketplace ruohki/tund</Command>
+          </div>
+          <div>
+            <p className="mb-2 text-[12.5px] text-muted">Cursor, Codex and other agents</p>
+            <Command>npx skills add ruohki/tund</Command>
           </div>
         </div>
       </div>
