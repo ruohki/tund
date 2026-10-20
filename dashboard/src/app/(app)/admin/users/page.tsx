@@ -39,7 +39,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
         where d.user_id = u.id and d.day >= date_trunc('month', now() at time zone 'utc')::date) as month_bytes,
       (select count(*) from tunnels t where t.user_id = u.id and t.ended_at is null)::int as online,
       (select count(*) from requests r where r.user_id = u.id and r.started_at > now() - interval '24 hours')::int as req24,
-      (select max(connected_at) from agent_sessions a where a.user_id = u.id) as last_connected
+      u.last_seen_at, u.inactivity_notice_at >= u.last_seen_at as deletion_noticed
     from users u ${where}
     order by u.created_at desc
     limit ${PAGE_SIZE} offset ${pageOffset(page)}`,
@@ -97,7 +97,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
                 <th className="px-4 py-2 font-medium">Online tunnels</th>
                 <th className="px-4 py-2 font-medium">Requests, 24h</th>
                 <th className="px-4 py-2 font-medium">Transfer this month</th>
-                <th className="px-4 py-2 font-medium">Last client connection</th>
+                <th className="px-4 py-2 font-medium">Last active</th>
                 <th className="px-4 py-2 font-medium">Joined</th>
               </tr>
             </thead>
@@ -121,6 +121,11 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
                         </Badge>
                       ) : null}
                       {!u.email_verified_at ? <Badge tone="live">Unverified</Badge> : null}
+                      {u.deletion_noticed ? (
+                        <Badge tone="danger" title="Emailed that the account will be deleted for inactivity">
+                          Deletion due
+                        </Badge>
+                      ) : null}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 tabular text-ink">{formatNumber(u.online)}</td>
@@ -138,7 +143,9 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-2.5 text-ink-2">{timeAgo(u.last_connected)}</td>
+                  <td className="px-4 py-2.5 text-ink-2" title={formatDateTime(u.last_seen_at)}>
+                    {timeAgo(u.last_seen_at)}
+                  </td>
                   <td className="px-4 py-2.5 text-ink-2" title={formatDateTime(u.created_at)}>
                     {timeAgo(u.created_at)}
                   </td>

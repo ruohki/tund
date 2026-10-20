@@ -2,10 +2,12 @@ import Link from "next/link";
 import { SiteWordmark } from "@/components/site-wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { publicConfig } from "@/lib/config";
+import { hasImprint } from "@/lib/legal";
 
 /** Public pages anyone can open: abuse reports and the legal pages. */
-export default function PublicLayout({ children }: { children: React.ReactNode }) {
+export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const c = publicConfig();
+  const imprint = await hasImprint();
   const link = "underline-offset-4 hover:text-ink hover:underline";
   return (
     <div className="flex min-h-dvh flex-col">
@@ -27,6 +29,14 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <Link href="/acceptable-use" className={link}>
               Acceptable use
             </Link>
+            <Link href="/privacy" className={link}>
+              Privacy
+            </Link>
+            {imprint ? (
+              <Link href="/imprint" className={link}>
+                Imprint
+              </Link>
+            ) : null}
             <Link href="/report" className={link}>
               Report abuse
             </Link>

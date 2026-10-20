@@ -13,7 +13,10 @@ export default async function AdminSettingsPage() {
       key: d.key,
       group: d.group,
       label: d.label,
-      help: d.key === "require_email_verification" && !mailOn ? `${d.help} Email isn't configured, so this is off for now.` : d.help,
+      help:
+        (d.key === "require_email_verification" || d.key === "inactive_account_months") && !mailOn
+          ? `${d.help} Email isn't configured, so this is off for now.`
+          : d.help,
       kind: d.kind,
       min: d.min,
       max: d.max,

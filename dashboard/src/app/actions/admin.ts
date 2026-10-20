@@ -2,6 +2,8 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { deleteAccount } from "@/lib/account-delete";
+import { BillingError, cancelSubscriptionsOf } from "@/lib/billing";
 import { requireAdmin, type User } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { config } from "@/lib/config";
@@ -121,7 +123,7 @@ export async function sendResetEmailAction(_: FormState, fd: FormData): Promise<
   const u = await targetUser(str(fd, "id"));
   if (!u) return { error: "Unknown user." };
   if (!(await smtpConfigured())) return { error: "Email isn't configured (Admin → Email)." };
-  const token = await issueEmailToken(u.id, "reset");
+  const token = await issueEmailToken(u.id, "reset", u.email);
   const { instance_name } = await getSettings();
   try {
     await sendMail(u.email, resetPasswordEmail(instance_name, `${config().dashboardUrl}/reset-password/${token}`));
@@ -161,9 +163,22 @@ export async function deleteUserAction(fd: FormData) {
   const admin = await requireAdmin();
   const u = await targetUser(str(fd, "id"));
   if (!u || u.id === admin.id) return;
-  await db()`delete from users where id = ${u.id}`;
-  await notify("tund_config", { kind: "user_disabled", id: u.id });
-  await audit(actorOf(admin), "user.delete", u.email);
+  // Nobody could cancel them once the account is gone, and Stripe would keep charging.
+  let cancelled = 0;
+  try {
+    cancelled = await cancelSubscriptionsOf(u.id);
+  } catch (err) {
+    if (!(err instanceof BillingError)) throw err;
+    redirect(`/admin/users/${u.id}?delete_error=billing`);
+  }
+  const gone = await deleteAccount(u.id);
+  if (gone) {
+    await audit(actorOf(admin), "user.delete", u.email, {
+      teams_deleted: gone.teamsDeleted,
+      teams_handed_over: gone.teamsHandedOver,
+      subscriptions_cancelled: cancelled,
+    });
+  }
   if (fd.get("redirect") === "list") redirect("/admin/users");
   refresh();
 }

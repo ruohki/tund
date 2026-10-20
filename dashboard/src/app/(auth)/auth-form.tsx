@@ -63,7 +63,11 @@ export function AuthForm({
             <a href="/acceptable-use" target="_blank" className="font-medium text-ink underline underline-offset-4">
               Acceptable Use Policy
             </a>
-            .
+            . See the{" "}
+            <a href="/privacy" target="_blank" className="font-medium text-ink underline underline-offset-4">
+              Privacy Policy
+            </a>{" "}
+            for how your data is handled.
           </span>
         </label>
       ) : null}

@@ -7,9 +7,9 @@ import { getSettings } from "./settings";
 
 /** Emails a fresh verification link (older links stop working). */
 export async function sendVerification(userId: string, email: string): Promise<boolean> {
-  const token = await issueEmailToken(userId, "verify");
-  const { instance_name } = await getSettings();
-  return trySendMail(email, verifyEmail(instance_name, `${config().dashboardUrl}/verify-email/${token}`));
+  const token = await issueEmailToken(userId, "verify", email);
+  const { instance_name, unverified_account_days } = await getSettings();
+  return trySendMail(email, verifyEmail(instance_name, `${config().dashboardUrl}/verify-email/${token}`, unverified_account_days));
 }
 
 /** Tells every active admin about a new account, when the setting asks for it. */

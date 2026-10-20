@@ -26,14 +26,21 @@ Go module path: `tund`.
 
 ## Hostnames
 
-* `TUND_BASE_DOMAIN` e.g. `tund.example.com`. Tunnels get `<label>.<base>`; one label only.
+* `TUND_BASE_DOMAIN` e.g. `tund.example.com`. Tunnels get `<label>.<base>`; one label only. It can sit below the dashboard's domain (the hosted instance: `on.tund.io` with `TUND_DASHBOARD_HOST=tund.io`, so tunnels are `myapp.on.tund.io`), which keeps tunnel names apart from the dashboard's own subdomains.
 * `TUND_DASHBOARD_HOST` default `dashboard.<base>`. Served by the edge:
   * `/_tund/ws` — client control connection (WebSocket)
   * `/_tund/install.sh`, `/_tund/install.ps1`, `/_tund/downloads/tund-<os>-<arch>[.exe]`, `…/checksums.txt`, `…/version.txt` (the newest client release, e.g. `0.4.0`; published with every release)
   * Client updates: the server reads `version.txt` from `TUND_DOWNLOADS_DIR` or `TUND_DOWNLOAD_BASE_URL` at start and hourly. A client connecting with an older release version (`X-Tund-Client-Version`) gets `{"type":"notice","update_version":"<latest>","error":"<text with the installer one-liner>"}` right after `welcome`; clients that know `update_version` show their own hint, older ones print `error`. Development builds (`dev`, `main-…`) never get it. `tund update` downloads `tund-<os>-<arch>` through these endpoints, checks it against `checksums.txt`, runs `<new> version` once and renames it over the running executable (Windows: the old one becomes `tund.exe.old`, removed on a later run).
   * `/_tund/oidc/start`, `/_tund/oidc/callback` — OIDC for protected tunnels
   * everything else → reverse proxy to `TUND_DASHBOARD_UPSTREAM` (Next.js)
-* Reserved labels that can never be tunnel subdomains: `dashboard www api admin app connect edge tund mail smtp imap ftp ns ns1 ns2 status docs static assets cdn` plus the first label of the dashboard host.
+* Reserved labels that can never be tunnel subdomains: `dashboard www api admin app connect edge tund mail smtp imap ftp ns ns1 ns2 status docs static assets cdn` plus the first label of the dashboard host, and after a move the base's own label under a previous base (`on` for `on.tund.io` moved from `tund.io`).
+* Changing the base domain: list the old one in `TUND_PREVIOUS_BASE_DOMAINS` (comma-separated). While it is set:
+  * On every start (any node, after the migrations, under `pg_advisory_xact_lock(727275)`, one transaction) static hostnames (`domains.kind='subdomain'`, personal and team) and `blocked_hosts` that are exactly one label under a previous base are renamed to the same label under the base. A static hostname whose new name is already pinned or whose label is reserved stays as it is and is logged on every start (delete it in the dashboard); a blocked host whose new name is already blocked is dropped. History (`tunnels`, `requests`, `connections`, `abuse_reports`) keeps the old names. Once everything moved, a start finds nothing to do.
+  * Visitors of `<label>.<previous>` (one label; not the dashboard host, a redirect host, the base itself or a reserved label) get a 308 to `<label>.<base>` with the same path and query, before any tunnel lookup. WebSocket handshakes don't follow redirects.
+  * Binds naming `<label>.<previous>` (`--hostname`, saved configs) bind `<label>.<base>`.
+  * Certificates: with a DNS provider the previous bases' wildcards (`*.<previous>`) are managed next to `*.<base>`; otherwise the on-demand gate admits `<label>.<previous>` only while `<label>.<base>` is pinned or has a live tunnel (on any node), and not blocked.
+  * A static hostname left under a previous base is never treated as a custom domain: binds and certificates for it are refused.
+  Keep the old wildcard DNS record while the variable is set; remove both once old links no longer matter.
 * Custom domains: a verified `domains` row (`kind='custom'`). `*.dev.example.com` allows any single label below it.
 * Ownership monitoring (migration 0018): verified custom domains keep proving ownership. Every node re-checks the domains that are due (claimed with `FOR UPDATE SKIP LOCKED` on `domains.checked_at`, so each check runs once in the cluster): hourly while the `_tund-challenge.<domain>` TXT record still contains `tund-verify=<token>`, every 10 minutes after a failed check, through the public resolvers 1.1.1.1/8.8.8.8/9.9.9.9. NXDOMAIN, no TXT record, or a TXT record without the value counts as a failure (`check_failures`); DNS errors (timeouts, SERVFAIL) don't count either way. After 3 failures in a row (about 20 minutes) the server withdraws the verification: `verified_at = NULL`, `unverified_at` and `unverified_reason` set, audit entry `domain.unverified` (actor `system`), `NOTIFY tund_config {"kind":"domain"}` (every node ends tunnels on the domain: "… lost its verification: its _tund-challenge TXT record is gone or changed; restore it and verify the domain again") and `NOTIFY tund_domain {"id"}`. A dashboard emails the domain's owner once (it claims `unverified_notified_at`; on start it also catches up on withdrawals of the last day). The domain shows "Verification lost" with the reason; verifying again restores it and resets the monitoring state. Binds and certificates already require a verified domain.
 
@@ -88,7 +95,7 @@ All requests need `Authorization: Bearer $TUND_INTERNAL_SECRET`. JSON in, JSON o
 
 * `subdomain` empty and `hostname` empty → random `adjective-noun-1234` label. The client remembers the label per local address and re-requests it on reconnect so certificates are reused.
 * `subdomain` set → allowed if valid, not reserved by another user, not in use by another online tunnel. If the user owns a `domains` row for it, that row's access policy applies.
-* `hostname` set → must be a verified domain of this user (exact, or a label under a wildcard domain of this user), or a subdomain of the base domain (treated like `subdomain`).
+* `hostname` set → must be a verified domain of this user (exact, or a label under a wildcard domain of this user), or a subdomain of the base domain (treated like `subdomain`). One label under a previous base domain (`TUND_PREVIOUS_BASE_DOMAINS`) counts as the same label under the base.
 * `host_header`: `""`/`preserve` (public host), `rewrite` (host of local_addr), anything else = literal value.
 * `auth` (optional, overrides the domain policy unless the hostname's team requires single sign-on, see "Teams"): `{"mode":"password","password":"..."}` or `{"mode":"oidc","provider":"<slug>","allow":["a@b.com","@b.com"]}`.
 
@@ -156,6 +163,7 @@ Client-side only: no protocol or server change, so shares work with every server
 | `TUND_RETENTION_DAYS` | `7` | |
 | `TUND_DOWNLOADS_DIR` | `/downloads` | cross-compiled clients |
 | `TUND_REDIRECT_HOSTS` | | comma-separated old dashboard hosts (after a domain move): pages 308-redirect to the dashboard, `/_tund/*` edge endpoints keep working in place for already-configured clients |
+| `TUND_PREVIOUS_BASE_DOMAINS` | | comma-separated base domains tunnels used before (see Hostnames, "Changing the base domain"); may be the dashboard host, not the base or a name under it |
 
 ## Dashboard environment
 
@@ -190,6 +198,8 @@ Every client binary talks to the hosted cloud instance by default: `tund/interna
 ### Accounts
 
 * `users.disabled_at` set → the dashboard refuses logins and deletes the user's sessions; the server rejects the user's authtokens (`403 {"error":"account disabled"}`) and, on `tund_config` `{"kind":"user_disabled","id":"<user id>"}`, disconnects their clients.
+* **Email address change** (Settings → Profile): needs the current password (accounts without one: a session from the last 15 min). With SMTP, an `email_change` link (24 h) goes to the new address and the change applies when the button on `/change-email/<token>` is pressed in a session of the same account (so the owner of a mistyped address can't take it over), setting `email_verified_at`; without SMTP it applies at once with `email_verified_at` null. The old address gets a notice. Taken and disposable addresses are refused. Audit `user.email_change` (from, to, confirmed).
+* **Deleting one's own account** (Settings → Delete account): type the email, plus the password (accounts without one: a session from the last 15 min). The last active admin can't. Subscriptions the account pays for (`status` not `canceled`/`incomplete_expired`) are cancelled at Stripe at once, without refund (a Stripe error stops the deletion); then `deleteAccount` (see "Inactive accounts"), a goodbye email, `/login?deleted=1`. Audit `user.delete_self` with `actor_id` null. Admin → Users → Delete account cancels subscriptions the same way.
 * Sign-up (`TUND_ALLOW_SIGNUP=true`) also shows a public landing page on `/` for signed-out visitors; otherwise `/` redirects to `/login`.
 
 ### Two-factor authentication and passkeys (migration 0020)
@@ -205,11 +215,11 @@ Dashboard sign-in only (authtokens and the CLI are unchanged; `tund login` appro
 
 Admins enable providers under `/admin/sign-in`; the `settings` row `oauth` holds `{"google"|"github": {"enabled", "client_id", "client_secret_enc"}}` (secret AES-256-GCM like the SMTP password, key from `TUND_INTERNAL_SECRET`). A provider appears on `/login` and `/signup` ("Continue with …") when it is enabled and its secret decrypts. Redirect URI to register: `<dashboard>/auth/oauth/<google|github>/callback`.
 
-* `GET /auth/oauth/<p>/start?next=…` (or `?intent=link`, signed in) sets the `tund_oauth` cookie (path `/auth/oauth`, HttpOnly, SameSite=Lax, 10 min, one use: provider, random `state`, PKCE verifier, `next`, intent) and redirects to the provider. Google: `openid email profile`, PKCE S256, `prompt=select_account`; GitHub: `read:user user:email`.
+* `GET /auth/oauth/<p>/start?next=…` (or `?intent=link`, signed in) sets the `__Host-tund_oauth` cookie (`tund_oauth` over plain HTTP; path `/`, which the prefix requires, so a tunnel on a subdomain can't plant a flow; HttpOnly, SameSite=Lax, 10 min, one use: provider, random `state`, PKCE verifier, `next`, intent) and redirects to the provider. Google: `openid email profile`, PKCE S256, `prompt=select_account`; GitHub: `read:user user:email`.
 * The callback checks `state` against the cookie, exchanges the code with the client secret and reads the account: Google `userinfo` (`sub`; email only when `email_verified`), GitHub `/user` (numeric `id`) and `/user/emails` (the primary verified address, else any verified one).
-* `user_identities (user_id, provider, subject, email)`, unique per `(provider, subject)` and `(user_id, provider)`. Sign-in: a known identity signs its user in; otherwise an account with the same (verified, lowercased) email is connected and signed in (`email_verified_at` set if missing); otherwise a new account is created under the sign-up rules: `signup_mode` (invite: `next` must be a valid invite whose email matches), disposable addresses, `signup_rate_limit`; Turnstile is not asked. New accounts get `password_hash = NULL` (they may set a password without the current one under Settings) and a verified email; "Continuing … you agree to the Terms and the Acceptable Use Policy" is shown next to the buttons while sign-up is possible. Disabled accounts are refused.
-* Errors go back to `/login?error=<code>` (link: `/settings?oauth_error=<code>`) with fixed messages: `state`, `cancelled`, `failed`, `unavailable`, `no_email`, `disabled`, `signup_closed`, `signup_invite`, `invite_email`, `disposable`, `rate`, `taken`, `last_method`.
-* Settings → *Sign-in methods*: connect (`intent=link`; an identity already on another user → `taken`) and disconnect (refused with `last_method` unless a password or another identity remains). Audit: `user.signup` (with provider), `user.identity_link`, `user.identity_unlink`.
+* `user_identities (user_id, provider, subject, email)`, unique per `(provider, subject)` and `(user_id, provider)`. Sign-in: a known identity signs its user in; otherwise an account with the same (verified, lowercased) email is connected and signed in (`email_verified_at` set if missing), but only when that account is known to be held by the address owner (`emailProven`: a connected identity with the same email, as every account Google/GitHub created has, or a password set through a used reset link sent to the current address) and else refused with `link_first`: someone can sign up with another person's address and keep the password, even after that person clicks the confirmation link; otherwise a new account is created under the sign-up rules: `signup_mode` (invite: `next` must be a valid invite whose email matches), disposable addresses, `signup_rate_limit`; Turnstile is not asked. New accounts get `password_hash = NULL` (they may set a password without the current one under Settings) and a verified email; "Continuing … you agree to the Terms and the Acceptable Use Policy" is shown next to the buttons while sign-up is possible. Disabled accounts are refused.
+* Errors go back to `/login?error=<code>` (link: `/settings?oauth_error=<code>`) with fixed messages: `state`, `cancelled`, `failed`, `unavailable`, `no_email`, `disabled`, `signup_closed`, `signup_invite`, `invite_email`, `disposable`, `rate`, `taken`, `last_method`, `link_first`.
+* Settings → *Sign-in methods*: connect (`intent=link`; an identity already on another user → `taken`; one whose verified email is the account's sets `email_verified_at`) and disconnect (refused with `last_method` unless a password or another identity remains). Audit: `user.signup` (with provider), `user.identity_link`, `user.identity_unlink`.
 
 ### Limits (0 = unlimited)
 
@@ -359,6 +369,16 @@ Values are UTF-8 with control characters removed; absent claims mean absent head
 
 Allow lists additionally accept `group:<name>` entries (exact, case-sensitive match against the `groups` claim). Providers need the right scopes for these claims (`profile` for name/username; many IdPs need a `groups` scope or claim mapping).
 
+## Inactive accounts (migration 0023)
+
+Off by default; admins turn it on under Admin → Settings → Sign-up & accounts.
+
+* `users.last_seen_at` (not null, default now; backfilled from sessions, tokens, clients, identities and passkeys) is the last sign of use: a dashboard sign-in (`startSession`) or visit (the daily sliding session refresh), an authtoken use (CLI, API, MCP; at most hourly, `AuthenticateToken`) or a client disconnecting (`EndAgentSession`). A connected client counts as activity until it disconnects.
+* Every dashboard runs the cleanup hourly, the first time 5 min after start. Never touched: admins, disabled accounts (they record why), accounts with a subscription Stripe could still charge (`status` not `canceled`/`incomplete_expired`; the cleanup never calls Stripe) or `pro_granted`. The same run applies `audit_retention_days`.
+* `inactive_account_months` > 0, only while SMTP is configured: an account unused for that long minus 30 days, with no client connected, gets the notice email ("will be deleted on <date>"; sign in to keep it) and `users.inactivity_notice_at = now()` (claimed with `for update skip locked`; reset when sending fails). It is deleted once it is unused for the full period and the notice is at least 30 days old and newer than `last_seen_at`. Any activity after the notice cancels it; a later notice starts over.
+* `unverified_account_days` > 0, only while verification is required: accounts with `email_verified_at` null and no identity whose last `verify` link was issued at least that many days ago are deleted (no notice; the banner and the confirmation email say so). Accounts that never got a link are left alone.
+* Deletion (`deleteAccount`, also behind Admin → Users → Delete account) re-checks the conditions on the locked row, then: resources the account created for a team (domains, OIDC providers, TCP ports) pass to the longest-standing other owner, else admin, else member, who becomes owner when none is left; teams without another member are deleted. The user row goes (foreign keys cascade). The edge gets `user_disabled`, `team` and `domain` notifications. Stripe customers and invoices stay at Stripe (deleting from Settings or by an admin cancels open subscriptions first).
+
 ## Admin area, settings and email (migration 0006)
 
 ### Settings (`settings` table)
@@ -377,8 +397,13 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 | `abuse_contact` | string | `TUND_ABUSE_CONTACT` | server + dashboard |
 | `retention_days` | int | `TUND_RETENTION_DAYS` | server |
 | `capture_max_body` | int bytes (1024 … 10485760) | `TUND_CAPTURE_MAX_BODY` | server |
+| `audit_retention_days` | int days (0 … 3650, 0 = forever) | 0 | dashboard: the hourly cleanup deletes older `audit_log` rows and clears `reporter_email`/`reporter_ip` of abuse reports closed that long ago |
 | `instance_name` | string | `"TUNd"` | dashboard (wordmark, page titles, link previews, sign-in copy, emails) + server (the edge's own pages: offline, 404, warning, …) |
 | `notify_admins_on_signup` | bool | false | dashboard |
+| `inactive_account_months` | int months (0 … 120, 0 = never) | 0 | dashboard ("Inactive accounts") |
+| `unverified_account_days` | int days (0 … 365, 0 = never) | 0 | dashboard ("Inactive accounts"); only while `require_email_verification` is effective |
+| `privacy_markdown` | string (Markdown) | "" = generated | dashboard (`/privacy`; the default is generated from the live settings and lists only what is enabled: retention periods, email, inactive-account deletion, Stripe, Google/GitHub, Turnstile, Safe Browsing, RDAP, cookies; the controller is named through `/imprint`) |
+| `imprint_markdown` | string (Markdown) | "" = no page | dashboard (`/imprint`, 404 while empty; footers link it only when set; operators in Germany must publish one, § 5 DDG) |
 | `smtp` | `{"host","port","security":"starttls"\|"tls"\|"none","username","password_enc","from_email","from_name"}` | none | dashboard |
 
 `smtp.password_enc` = base64url(nonce(12) ‖ AES-256-GCM ciphertext) with key `sha256("tund-settings\x00" + TUND_INTERNAL_SECRET)`; the password is never sent back to the browser (the form shows "unchanged" unless replaced).
@@ -386,7 +411,11 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 ### Email flows (dashboard, nodemailer)
 
 * **Verification**: on sign-up (when required) send a link `/verify-email/<token>` (24 h); resend from a banner. Verified → `users.email_verified_at = now()`.
-* **Password reset**: `/forgot-password` (always answers "if the address exists, we sent a link" — no account enumeration; rate limited per IP and per address) → `/reset-password/<token>` (1 h, single use) → new password, all sessions of the user deleted.
+* Every link remembers the address it went to (`email_tokens.email`, migration 0024): `verify` and `reset` links stop working once the account's address changes, and only a used `reset` link to the current address counts for `emailProven`. Links from before 0024 count for nothing.
+* **Password reset**: `/forgot-password` (always answers "if the address exists, we sent a link" — no account enumeration; rate limited per IP and per address) → `/reset-password/<token>` (1 h, single use) → new password, all sessions of the user deleted, `email_verified_at` set. When the account wasn't known to be held by the address owner before (`emailProven`, ignoring this link), the reset also deletes its authtokens (`authtoken_revoked` each), passkeys, connected identities, two-factor secret and recovery codes, and `/login?reset=fresh` says so: they may have been set up by someone who registered the address without owning it.
+* **Inactive accounts**: the deletion notice (see "Inactive accounts").
+* **Address change**: the confirmation link to the new address, then a notice to the old one (see "Accounts").
+* **Account deleted**: a last email after deleting one's own account.
 * **Team invites**: when a team admin invites an address, the invite link is also emailed (if SMTP is configured).
 * **Admin notice** of new sign-ups when `notify_admins_on_signup`.
 * Tokens: 32 random bytes base64url, stored as sha256 hex in `email_tokens`; one active token per user and kind (new token invalidates older ones).
@@ -394,11 +423,11 @@ Key → JSON value. A stored value overrides the env default; deleting the row f
 
 ### Audit log
 
-Every admin action and security-relevant account event is appended to `audit_log` by the dashboard: `settings.update` (details = changed keys, never secrets), `smtp.test`, `user.create|delete|disable|enable|admin|unadmin|trust|untrust|verify|reset_password|custom_domains|passthrough`, `tunnel.stop` (admin), `team.delete` (admin), `domain.delete` (admin), `auth.password_reset` (by the user). Admins see it paginated and filterable under `/admin/audit`.
+Every admin action and security-relevant account event is appended to `audit_log` by the dashboard: `settings.update` (details = changed keys, never secrets), `smtp.test`, `user.create|delete|disable|enable|admin|unadmin|trust|untrust|verify|reset_password|custom_domains|passthrough`, `tunnel.stop` (admin), `team.delete` (admin), `domain.delete` (admin), `auth.password_reset` (by the user; `first_confirmation` when it removed credentials), `user.email_change`, `user.delete_self` (no actor id: the account is gone), and with actor `system` `user.inactivity_notice`, `user.delete_inactive`, `user.delete_unconfirmed`. `user.delete*` details name the teams deleted with the account and those handed to a new owner. Admins see it paginated and filterable under `/admin/audit`.
 
 ### Internal API additions (tund-server)
 
-* `GET /internal/status` → `{"version","started_at","base_domain","dashboard_host","tls_mode","dns_provider","tunnels","sessions","recorder_queue","certificates":[{"name","not_after","issuer"}]}` (certificates: the wildcard `*.<base>` and the dashboard host when present in the cache).
+* `GET /internal/status` → `{"version","started_at","base_domain","dashboard_host","tls_mode","dns_provider","tunnels","sessions","recorder_queue","certificates":[{"name","not_after","issuer"}]}` (certificates: the wildcard `*.<base>`, with a DNS provider also `*.<previous>` for each previous base domain, and the dashboard host when present in the cache).
 * `POST /internal/admin/tunnels/stop` `{"tunnel_id","reason"}` → stops any tunnel (the dashboard has checked that the caller is an admin); the client sees `reason` (default "stopped by an administrator").
 
 ### Admin pages (`/admin/*`, `users.is_admin` only; 404 for others)
@@ -517,7 +546,7 @@ API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests
 
 ### DNS (hosted instance)
 
-`tund.io` has CAA records allowing only the instance's own Let's Encrypt accounts (production + staging `accounturi`s, `issue` and `issuewild`). Without them a TLS-passthrough tunnel could answer an HTTP-01 challenge for its own hostname and obtain a trusted certificate for `x.tund.io`, bypassing the warning page. **If the certificate storage (and with it the ACME account) is ever recreated, the CAA records must be updated**, and edge nodes must share the certificate storage (they do: Postgres).
+`tund.io` has CAA records allowing only the instance's own Let's Encrypt accounts (production + staging `accounturi`s, `issue` and `issuewild`). Without them a TLS-passthrough tunnel could answer an HTTP-01 challenge for its own hostname and obtain a trusted certificate for `x.tund.io`, bypassing the warning page. Tunnels under `*.on.tund.io` are covered by the same records: `on.tund.io` has no CAA of its own, so CAs use `tund.io`'s. **If the certificate storage (and with it the ACME account) is ever recreated, the CAA records must be updated**, and edge nodes must share the certificate storage (they do: Postgres).
 
 ### Settings (Admin → Settings → Abuse protection)
 
@@ -550,7 +579,7 @@ API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests
 
 ### Dashboard
 
-Public `/report?host=` form (category, URL, description, optional email; Turnstile when configured; rate limited) linked from the warning page, landing footer and blocked page. `/admin/abuse`: queue with filters; actions stop tunnel, block hostname, disable account, trust/untrust, flag/unflag, resolve/dismiss with a note (all audited). `/terms` and `/acceptable-use` pages (generic defaults with `instance_name`, editable in settings as markdown), accepted via a checkbox at sign-up. Custom-domain creation respects `custom_domains` (and the per-account override) first, then `untrusted_custom_domains`.
+Public `/report?host=` form (category, URL, description, optional email; Turnstile when configured; rate limited) linked from the warning page, landing footer and blocked page. `/admin/abuse`: queue with filters; actions stop tunnel, block hostname, disable account, trust/untrust, flag/unflag, resolve/dismiss with a note (all audited). `/terms` and `/acceptable-use` pages (generic defaults with `instance_name`, editable in settings as markdown), accepted via a checkbox at sign-up, which also points to `/privacy`; `/privacy` and `/imprint` see the settings table. Custom-domain creation respects `custom_domains` (and the per-account override) first, then `untrusted_custom_domains`.
 
 ### Custom domain review
 

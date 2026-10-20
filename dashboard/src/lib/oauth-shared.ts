@@ -30,6 +30,8 @@ export const OAUTH_ERRORS: Record<string, string> = {
   disposable: "Disposable email addresses can't be used here. Use an account with an address you'll keep.",
   rate: "Too many accounts were created from your network in the last hour. Try again later.",
   taken: "That account is already connected to another user on this server.",
+  link_first:
+    "An account with this email address already exists. Sign in with its password once and connect this account under Settings → Sign-in methods. Forgot the password? Resetting it by email works too.",
   last_method: "Set a password or connect another account first, so you can still sign in.",
 };
 

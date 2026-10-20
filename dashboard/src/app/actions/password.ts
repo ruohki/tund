@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { config } from "@/lib/config";
-import { db } from "@/lib/db";
-import { consumeEmailToken, issueEmailToken, rateLimited } from "@/lib/email-tokens";
+import { db, notify } from "@/lib/db";
+import { consumeEmailToken, emailProven, issueEmailToken, rateLimited } from "@/lib/email-tokens";
 import { resetPasswordEmail, smtpConfigured, trySendMail } from "@/lib/mail";
 import { hashPassword, MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { getSettings } from "@/lib/settings";
@@ -34,7 +34,7 @@ export async function forgotPasswordAction(_: FormState, fd: FormData): Promise<
   if (rateLimited(`forgot-email:${email}`, 3, 60 * 60_000)) return { ok: SENT };
   const [user] = await db()`select id, email from users where email = ${email} and disabled_at is null`;
   if (user) {
-    const token = await issueEmailToken(user.id, "reset");
+    const token = await issueEmailToken(user.id, "reset", user.email);
     const { instance_name } = await getSettings();
     await trySendMail(user.email, resetPasswordEmail(instance_name, `${config().dashboardUrl}/reset-password/${token}`));
   }
@@ -60,15 +60,27 @@ export async function resetPasswordAction(_: FormState, fd: FormData): Promise<F
             : "This link isn't valid. Ask for a new one.",
     };
   }
-  await db().begin(async (tx) => {
+  const revoked = await db().begin(async (tx) => {
+    // The first proof that the address is the account's own: whoever made the
+    // account may have registered someone else's address, so nothing they set
+    // up keeps working (tokens, passkeys, two-factor, connected accounts).
+    const first = !(await emailProven(tx, t.userId, token));
     await tx`update users set password_hash = ${hash} where id = ${t.userId}`;
     // Signs out every browser, including a possible attacker's.
     await tx`delete from sessions where user_id = ${t.userId}`;
     // Following an emailed link proves the address.
     await tx`update users set email_verified_at = coalesce(email_verified_at, now()) where id = ${t.userId}`;
+    if (!first) return null;
+    const tokens = await tx`delete from authtokens where user_id = ${t.userId} returning id`;
+    await tx`delete from user_passkeys where user_id = ${t.userId}`;
+    await tx`delete from user_identities where user_id = ${t.userId}`;
+    await tx`delete from user_recovery_codes where user_id = ${t.userId}`;
+    await tx`update users set totp_secret = '', totp_enabled_at = null, totp_last_step = 0 where id = ${t.userId}`;
+    return tokens.map((r) => r.id as string);
   });
-  await audit({ id: t.userId, email: t.email }, "auth.password_reset", t.email);
-  redirect("/login?reset=1");
+  for (const id of revoked ?? []) await notify("tund_config", { kind: "authtoken_revoked", id });
+  await audit({ id: t.userId, email: t.email }, "auth.password_reset", t.email, revoked ? { first_confirmation: true } : {});
+  redirect(revoked ? "/login?reset=fresh" : "/login?reset=1");
 }
 
 export async function verifyEmailAction(_: FormState, fd: FormData): Promise<FormState> {

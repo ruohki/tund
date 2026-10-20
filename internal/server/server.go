@@ -85,6 +85,13 @@ func New(cfg *Config, store *Store) (*Server, error) {
 	if first, _, ok := strings.Cut(cfg.DashboardHost, "."); ok && strings.HasSuffix(cfg.DashboardHost, "."+cfg.BaseDomain) {
 		s.reserved[first] = true
 	}
+	// After a move to on.tund.io, "on" stays out of tunnel names: on.tund.io is
+	// the base itself, and a cookie set there would reach every tunnel.
+	for _, prev := range cfg.PreviousBaseDomains {
+		if first, ok := strings.CutSuffix(cfg.BaseDomain, "."+prev); ok && validLabel(first) {
+			s.reserved[first] = true
+		}
+	}
 	s.certs = newCerts(s)
 	s.tcp = newTCPPorts(cfg.TCPPortFrom, cfg.TCPPortTo)
 	if cfg.RelayURL != "" {
@@ -140,6 +147,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Redirect(w, r, s.cfg.DashboardURL()+r.URL.RequestURI(), http.StatusPermanentRedirect)
+		return
+	}
+	if moved := s.movedHost(host); moved != "" {
+		// Tunnels moved to another base domain: links to the old hostname
+		// keep working.
+		http.Redirect(w, r, s.cfg.PublicURL(moved)+r.URL.RequestURI(), http.StatusPermanentRedirect)
 		return
 	}
 	if _, blocked := s.blockedReason(host); blocked {
@@ -421,6 +434,9 @@ func (s *Server) onConfigChange(payload string) {
 func (s *Server) Run(ctx context.Context) error {
 	if err := s.store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate: %w", err)
+	}
+	if err := s.moveFromPreviousBases(ctx); err != nil {
+		return fmt.Errorf("move hostnames to %s: %w", s.cfg.BaseDomain, err)
 	}
 	if err := s.store.CloseStale(ctx, s.cfg.NodeName()); err != nil {
 		return err

@@ -8,7 +8,10 @@ import { disconnectIdentityAction, revokeSessionAction } from "@/app/actions/acc
 import { enabledProviders, identitiesOf } from "@/lib/oauth";
 import { OAUTH_PROVIDERS, oauthError, PROVIDER_LABEL } from "@/lib/oauth-shared";
 import { ProviderIcon } from "@/components/provider-icons";
-import { PasswordForm, ProfileForm } from "./forms";
+import { DeleteAccountForm, EmailForm, PasswordForm, ProfileForm } from "./forms";
+import { smtpConfigured } from "@/lib/mail";
+import { openSubscriptionsOf } from "@/lib/billing";
+import { PLAN_LABEL } from "@/lib/plans";
 import { TransferUsage } from "@/components/transfer-usage";
 import { twoFactorStatus } from "@/lib/two-factor";
 import { removePasskeyAction } from "@/app/actions/two-factor";
@@ -26,8 +29,8 @@ function describeAgent(ua: string) {
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireUser();
   const session = await getSession();
-  const { oauth_error: oauthErr, oauth_linked: linkedNow, passkey_error: passkeyErr } = await searchParams;
-  const [sessions, providers, identities, [pw], twoFactor, passkeys] = await Promise.all([
+  const { oauth_error: oauthErr, oauth_linked: linkedNow, passkey_error: passkeyErr, email_changed: emailChanged } = await searchParams;
+  const [sessions, providers, identities, [pw], twoFactor, passkeys, mailOn, subs, teams, [admins]] = await Promise.all([
     db()`
       select id, user_agent, ip, created_at, expires_at from sessions
       where user_id = ${user.id} and expires_at > now() order by created_at desc`,
@@ -36,7 +39,16 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     db()`select password_hash is not null as has from users where id = ${user.id}`,
     twoFactorStatus(user.id),
     db()`select id, name, created_at, last_used_at, backed_up from user_passkeys where user_id = ${user.id} order by created_at`,
+    smtpConfigured(),
+    openSubscriptionsOf(user.id),
+    db()`
+      select t.name, (select count(*)::int from team_members x where x.team_id = t.id) as members
+      from team_members m join teams t on t.id = m.team_id where m.user_id = ${user.id} order by t.name`,
+    db()`select count(*)::int as others from users where is_admin and disabled_at is null and id <> ${user.id}`,
   ]);
+  const soloTeams = teams.filter((t) => t.members === 1).map((t) => t.name as string);
+  const sharedTeams = teams.filter((t) => t.members > 1).map((t) => t.name as string);
+  const lastAdmin = user.isAdmin && !admins?.others;
   const hasPassword = Boolean(pw?.has);
   // Enabled providers, plus ones still connected after an admin turned them off.
   const methods = OAUTH_PROVIDERS.filter((p) => providers.includes(p) || identities.some((i) => i.provider === p));
@@ -46,9 +58,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   return (
     <>
       <PageHeader title="Settings" description="Your profile, how you sign in, and signed-in browsers." />
+      {emailChanged ? (
+        <p role="status" className="mb-6 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
+          Your email address is now {user.email}.
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Panel title="Profile" bodyClassName="p-4">
-          <ProfileForm name={user.name} email={user.email} />
+          <div className="flex flex-col gap-6">
+            <ProfileForm name={user.name} />
+            <EmailForm email={user.email} hasPassword={hasPassword} mailOn={mailOn} />
+          </div>
         </Panel>
         <Panel
           title="Password"
@@ -198,6 +218,41 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           ))}
         </ul>
       </Panel>
+      <div id="delete" className="mt-6 scroll-mt-6">
+        <Panel
+          title="Delete account"
+          description="Deletes your account for good, with its tunnels, static hostnames, custom domains, auth tokens, identity providers and captured traffic."
+          bodyClassName="flex flex-col gap-4 p-4"
+        >
+          <ul className="list-disc space-y-1 pl-5 text-[13px] text-ink-2">
+            {subs.length ? (
+              <li>
+                Your subscriptions ({subs.map((s) => PLAN_LABEL[s.plan]).join(", ")}) end right away, without a refund. Invoices
+                stay available from the payment provider.
+              </li>
+            ) : null}
+            {soloTeams.length ? <li>Teams with no other member are deleted: {soloTeams.join(", ")}.</li> : null}
+            {sharedTeams.length ? (
+              <li>
+                Teams you share stay. What you set up for them passes to another member, who becomes owner when you were the last
+                one: {sharedTeams.join(", ")}.
+              </li>
+            ) : null}
+            <li>
+              {hasPassword
+                ? "Confirm with your password."
+                : "Your account has no password: sign out and in again first if you signed in more than 15 minutes ago."}
+            </li>
+          </ul>
+          {lastAdmin ? (
+            <p className="text-[13px] text-muted">
+              You&apos;re the only administrator of this server. Make someone else an administrator before you delete your account.
+            </p>
+          ) : (
+            <DeleteAccountForm email={user.email} hasPassword={hasPassword} />
+          )}
+        </Panel>
+      </div>
     </>
   );
 }

@@ -45,6 +45,7 @@ export async function startSession(userId: string) {
   await db()`
     insert into sessions (id, user_id, expires_at, user_agent, ip)
     values (${sha256(token)}, ${userId}, ${expires}, ${ua}, ${ip})`;
+  await db()`update users set last_seen_at = now() where id = ${userId}`;
   const jar = await cookies();
   jar.set(sessionCookieName(), token, {
     httpOnly: true,
@@ -99,9 +100,11 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!row) return null;
   const id = row.session_id as string;
   // Sliding expiry: push the DB expiry forward at most once a day. The cookie
-  // itself is refreshed by proxy.ts on every navigation.
+  // itself is refreshed by proxy.ts on every navigation. The same daily write
+  // records the account as active (lib/inactive-accounts.ts).
   if ((row.expires_at as Date).getTime() - Date.now() < (SESSION_DAYS - 1) * DAY) {
     await db()`update sessions set expires_at = ${new Date(Date.now() + SESSION_DAYS * DAY)} where id = ${id}`;
+    await db()`update users set last_seen_at = now() where id = ${row.id}`;
   }
   return {
     id,

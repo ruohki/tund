@@ -8,7 +8,7 @@ import { clientIp } from "./client-ip";
 import { config } from "./config";
 import { db } from "./db";
 import { isDisposableEmail } from "./disposable-domains";
-import { rateExceeded, rateRecord } from "./email-tokens";
+import { emailProven, rateExceeded, rateRecord } from "./email-tokens";
 import { OAUTH_PROVIDERS, PROVIDER_LABEL, type OAuthProviderId } from "./oauth-shared";
 import { decryptSecret, getSettings } from "./settings";
 import { signupCheck } from "./signup";
@@ -40,8 +40,10 @@ export async function enabledProviders(): Promise<OAuthProviderId[]> {
 
 // --- the flow cookie ----------------------------------------------------------
 
-const FLOW_COOKIE = "tund_oauth";
-const FLOW_PATH = "/auth/oauth";
+// __Host- like the session cookie: a tunnel on a subdomain could otherwise
+// plant its own flow (Domain=<parent>) and sign the browser in to an account
+// of its choosing. The prefix needs Path=/.
+const flowCookie = () => (config().secureCookies ? "__Host-tund_oauth" : "tund_oauth");
 
 type Flow = {
   p: OAuthProviderId;
@@ -52,18 +54,18 @@ type Flow = {
 };
 
 async function setFlow(flow: Flow | null) {
-  (await cookies()).set(FLOW_COOKIE, flow ? Buffer.from(JSON.stringify(flow)).toString("base64url") : "", {
+  (await cookies()).set(flowCookie(), flow ? Buffer.from(JSON.stringify(flow)).toString("base64url") : "", {
     httpOnly: true,
     secure: config().secureCookies,
     // Lax: sent on the provider's top-level redirect back to us.
     sameSite: "lax",
-    path: FLOW_PATH,
+    path: "/",
     maxAge: flow ? 10 * 60 : 0,
   });
 }
 
 async function takeFlow(): Promise<Flow | null> {
-  const raw = (await cookies()).get(FLOW_COOKIE)?.value;
+  const raw = (await cookies()).get(flowCookie())?.value;
   await setFlow(null); // one use
   if (!raw) return null;
   try {
@@ -199,6 +201,10 @@ export async function finishOAuth(p: OAuthProviderId, query: URLSearchParams, cu
         if ((err as { code?: string }).code === "23505") return settingsError("taken");
         throw err;
       }
+      // The provider verified this address for the signed-in user.
+      if (profile.email === current.email) {
+        await db()`update users set email_verified_at = coalesce(email_verified_at, now()) where id = ${current.id}`;
+      }
       await audit({ id: current.id, email: current.email }, "user.identity_link", current.email, { provider: p, email: profile.email });
     }
     return `/settings?oauth_linked=${p}`;
@@ -213,8 +219,11 @@ export async function finishOAuth(p: OAuthProviderId, query: URLSearchParams, cu
     if (!profile.email) return fail("no_email");
     const [byEmail] = await db()`select id, disabled_at from users where email = ${profile.email}`;
     if (byEmail) {
-      // The provider verified the address, so it's the same person: connect them.
       if (byEmail.disabled_at) return fail("disabled");
+      // The provider verified the address, but whoever made the account may
+      // not own it: someone can sign up with another person's address and keep
+      // the password. Connect only accounts known to be the address owner's.
+      if (!(await emailProven(db(), byEmail.id as string))) return fail("link_first");
       userId = byEmail.id as string;
       await db()`
         insert into user_identities (user_id, provider, subject, email)

@@ -2,7 +2,8 @@ import "server-only";
 import { headers } from "next/headers";
 import { db } from "./db";
 
-type Actor = { id: string; email: string } | null;
+/** id is null for an account that no longer exists (it deleted itself). */
+type Actor = { id: string | null; email: string } | null;
 
 /**
  * Appends to the audit log (docs/SPEC.md "Audit log"). `details` must never
@@ -16,6 +17,17 @@ export async function audit(actor: Actor, action: string, target = "", details: 
     await db()`
       insert into audit_log (actor_id, actor_email, action, target, details, ip)
       values (${actor?.id ?? null}, ${actor?.email ?? ""}, ${action}, ${target}, ${db().json(details as never)}, ${ip})`;
+  } catch (err) {
+    console.error("tund: audit log write failed", action, err);
+  }
+}
+
+/** For background jobs, which have no request: the actor is "system". */
+export async function systemAudit(action: string, target = "", details: Record<string, unknown> = {}) {
+  try {
+    await db()`
+      insert into audit_log (actor_email, action, target, details)
+      values ('system', ${action}, ${target}, ${db().json(details as never)})`;
   } catch (err) {
     console.error("tund: audit log write failed", action, err);
   }

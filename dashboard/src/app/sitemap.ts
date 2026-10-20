@@ -5,9 +5,9 @@ import { getSettings } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const open = await getSettings().then(
-    (s) => s.signup_mode === "open",
-    () => false,
+  const [open, imprint] = await getSettings().then(
+    (s) => [s.signup_mode === "open", Boolean(s.imprint_markdown.trim())],
+    () => [false, false],
   );
   if (!open) return [];
   const base = config().dashboardUrl;
@@ -16,5 +16,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: "monthly" as const,
     priority,
   });
-  return [page("/", 1), page("/signup", 0.6), page("/login", 0.4), page("/terms", 0.2), page("/acceptable-use", 0.2)];
+  return [
+    page("/", 1),
+    page("/signup", 0.6),
+    page("/login", 0.4),
+    page("/terms", 0.2),
+    page("/acceptable-use", 0.2),
+    page("/privacy", 0.2),
+    ...(imprint ? [page("/imprint", 0.1)] : []),
+  ];
 }

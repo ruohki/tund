@@ -98,7 +98,13 @@ const exampleBox = "rounded-md border border-line bg-surface-2 px-3 py-2 font-mo
 export async function Landing() {
   const cfg = publicConfig();
   const site = await siteInfo();
-  const { browser_warning: browserWarning, custom_domains: customDomains, passthrough } = await getSettings();
+  const {
+    browser_warning: browserWarning,
+    custom_domains: customDomains,
+    passthrough,
+    imprint_markdown: imprintMarkdown,
+  } = await getSettings();
+  const imprint = Boolean(imprintMarkdown.trim());
   const url = `${cfg.scheme}://brave-otter-4821.${cfg.baseDomain}${cfg.portSuffix}`;
   const host = url.replace(/^https?:\/\//, "");
 
@@ -318,6 +324,14 @@ export async function Landing() {
             <Link href="/acceptable-use" className="underline-offset-4 hover:text-ink hover:underline">
               Acceptable use
             </Link>
+            <Link href="/privacy" className="underline-offset-4 hover:text-ink hover:underline">
+              Privacy
+            </Link>
+            {imprint ? (
+              <Link href="/imprint" className="underline-offset-4 hover:text-ink hover:underline">
+                Imprint
+              </Link>
+            ) : null}
             <Link href="/report" className="underline-offset-4 hover:text-ink hover:underline">
               Report abuse
             </Link>

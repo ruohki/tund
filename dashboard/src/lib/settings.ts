@@ -120,8 +120,12 @@ export type Settings = {
   abuse_contact: string;
   retention_days: number;
   capture_max_body: number;
+  audit_retention_days: number;
   instance_name: string;
   notify_admins_on_signup: boolean;
+  // Inactive accounts (docs/SPEC.md "Inactive accounts"); 0 = never.
+  inactive_account_months: number;
+  unverified_account_days: number;
   // Abuse protection (docs/SPEC.md "Abuse protection")
   untrusted_custom_domains: "allow" | "review" | "deny";
   warn_custom_domains: boolean;
@@ -139,6 +143,9 @@ export type Settings = {
   // Public legal pages, Markdown; empty = the built-in text.
   terms_markdown: string;
   acceptable_use_markdown: string;
+  privacy_markdown: string;
+  // Empty = no imprint page.
+  imprint_markdown: string;
   smtp: SmtpSettings | null;
   oauth: OAuthSettings;
   billing: BillingSettings;
@@ -209,6 +216,26 @@ export const SETTING_DEFS: SettingDef[] = [
     help: "Sends a short notice to every administrator when someone creates an account.",
     kind: "bool",
     fallback: () => false,
+  },
+  {
+    key: "inactive_account_months",
+    group: "Sign-up & accounts",
+    label: "Delete inactive accounts after (months)",
+    help: "Accounts with no sign-in, CLI or API use and no connected client for this long are deleted with their tunnels, hostnames, domains and captured traffic. The owner gets an email 30 days before, and signing in keeps the account. Only runs while email is configured. Admins, disabled accounts, paying accounts and accounts with granted Pro are kept. 0 = never.",
+    kind: "int",
+    min: 0,
+    max: 120,
+    fallback: () => 0,
+  },
+  {
+    key: "unverified_account_days",
+    group: "Sign-up & accounts",
+    label: "Delete unconfirmed accounts after (days)",
+    help: "Accounts that didn't confirm their email address are deleted this many days after the last confirmation link went out. Only while email verification is required. 0 = never.",
+    kind: "int",
+    min: 0,
+    max: 365,
+    fallback: () => 0,
   },
   {
     key: "limit_tunnels",
@@ -455,6 +482,16 @@ export const SETTING_DEFS: SettingDef[] = [
     fallback: () => envInt("TUND_CAPTURE_MAX_BODY", 262144),
   },
   {
+    key: "audit_retention_days",
+    group: "Traffic capture & retention",
+    label: "Keep the audit log for (days)",
+    help: "Older audit entries are deleted, and abuse reports closed that long ago lose the reporter's email and IP address. 0 = keep forever.",
+    kind: "int",
+    min: 0,
+    max: 3650,
+    fallback: () => 0,
+  },
+  {
     key: "turnstile_site_key",
     group: "Sign-up & accounts",
     label: "Cloudflare Turnstile site key",
@@ -587,6 +624,22 @@ export const SETTING_DEFS: SettingDef[] = [
     group: "Legal pages",
     label: "Acceptable use policy (/acceptable-use)",
     help: "Markdown. Leave empty to use the generic default text.",
+    kind: "markdown",
+    fallback: () => "",
+  },
+  {
+    key: "privacy_markdown",
+    group: "Legal pages",
+    label: "Privacy policy (/privacy)",
+    help: "Markdown. Leave empty to use a text generated from this instance's settings, which names the controller only through the imprint: fill that in too, and add what the software can't know, such as your hosting providers.",
+    kind: "markdown",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_markdown",
+    group: "Legal pages",
+    label: "Imprint / Impressum (/imprint)",
+    help: "Markdown: who runs this instance, with a postal address and a way to reach you. Operators in Germany must publish one (§ 5 DDG). Empty = no imprint page and no links to it.",
     kind: "markdown",
     fallback: () => "",
   },

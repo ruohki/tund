@@ -30,7 +30,11 @@ export function OAuthButtons({ providers, next, terms }: { providers: OAuthProvi
           <a href="/acceptable-use" target="_blank" className="underline underline-offset-4 hover:text-ink">
             Acceptable Use Policy
           </a>
-          .
+          . See the{" "}
+          <a href="/privacy" target="_blank" className="underline underline-offset-4 hover:text-ink">
+            Privacy Policy
+          </a>{" "}
+          for how your data is handled.
         </p>
       ) : null}
       <div className="mt-5 flex items-center gap-3 text-[12px] text-muted" aria-hidden>

@@ -27,14 +27,14 @@ const PRIVATE = [
 ];
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const open = await getSettings().then(
-    (s) => s.signup_mode === "open",
-    () => false,
+  const [open, imprint] = await getSettings().then(
+    (s) => [s.signup_mode === "open", Boolean(s.imprint_markdown.trim())],
+    () => [false, false],
   );
   const base = config().dashboardUrl;
   if (!open) return { rules: { userAgent: "*", disallow: "/" } };
   return {
-    rules: { userAgent: "*", allow: ["/$", "/login", "/signup", "/report", "/terms", "/acceptable-use"], disallow: PRIVATE },
+    rules: { userAgent: "*", allow: ["/$", "/login", "/signup", "/report", "/terms", "/acceptable-use", "/privacy", ...(imprint ? ["/imprint"] : [])], disallow: PRIVATE },
     sitemap: `${base}/sitemap.xml`,
     host: base,
   };

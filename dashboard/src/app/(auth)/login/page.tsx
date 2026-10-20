@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { next: rawNext, reset, error, two_factor: twoFactor } = await searchParams;
+  const { next: rawNext, reset, error, two_factor: twoFactor, deleted } = await searchParams;
   const next = safeNext(rawNext);
   if (!(await usersExist())) redirect(withNext("/setup", next));
   if (await getCurrentUser()) redirect(next);
@@ -33,6 +33,17 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       {reset === "1" ? (
         <p role="status" className="mb-5 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
           Your password was changed and you were signed out everywhere. Sign in with the new password.
+        </p>
+      ) : reset === "fresh" ? (
+        <p role="status" className="mb-5 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
+          Your password was changed and your email address is confirmed. Because it was the first confirmation, auth tokens,
+          passkeys, two-factor authentication and connected Google or GitHub accounts were removed too, in case someone else
+          set them up. Sign in with the new password and set up again what you need.
+        </p>
+      ) : null}
+      {deleted === "1" ? (
+        <p role="status" className="mb-5 rounded-md border border-ok/30 bg-ok-wash px-3 py-2 text-[13px] text-ok">
+          Your account and everything in it were deleted.
         </p>
       ) : null}
       {twoFactor === "expired" || twoFactor === "attempts" ? (

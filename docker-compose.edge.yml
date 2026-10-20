@@ -41,6 +41,7 @@ services:
       TUND_TCP_HOST: ${TUND_TCP_HOST:-}
       TUND_DOWNLOAD_BASE_URL: ${TUND_DOWNLOAD_BASE_URL:-}
       TUND_REDIRECT_HOSTS: ${TUND_REDIRECT_HOSTS:-}
+      TUND_PREVIOUS_BASE_DOMAINS: ${TUND_PREVIOUS_BASE_DOMAINS:-}
       TUND_DEBUG: ${TUND_DEBUG:-}
       # Defaults for settings not saved under Admin → Settings: keep them equal
       # to the control node's, or accounts get different limits per node.

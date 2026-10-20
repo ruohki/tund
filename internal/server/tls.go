@@ -48,9 +48,10 @@ func newCerts(s *Server) *Certs {
 	}
 
 	var wildcardCfg *certmagic.Config
+	wildcards := c.wildcardNames()
 	cache := certmagic.NewCache(certmagic.CacheOptions{
 		GetConfigForCert: func(cert certmagic.Certificate) (*certmagic.Config, error) {
-			if wildcardCfg != nil && slices.Contains(cert.Names, "*."+s.cfg.BaseDomain) {
+			if wildcardCfg != nil && slices.ContainsFunc(cert.Names, func(n string) bool { return slices.Contains(wildcards, n) }) {
 				return wildcardCfg, nil
 			}
 			return c.onDemand, nil
@@ -127,11 +128,21 @@ func (c *Certs) Start(ctx context.Context) error {
 		// wildcard goes through DNS-01: an apex dashboard host would share the
 		// _acme-challenge TXT name and the two orders would clobber each other,
 		// so it is obtained via HTTP-01 like any other hostname (see Prewarm).
-		if err := c.wildcardCfg.ManageAsync(context.Background(), []string{"*." + c.srv.cfg.BaseDomain}); err != nil {
+		if err := c.wildcardCfg.ManageAsync(context.Background(), c.wildcardNames()); err != nil {
 			logf("wildcard certificate: %v", err)
 		}
 	}
 	return nil
+}
+
+// wildcardNames are the DNS-01 wildcards: the base domain's, plus those of
+// previous base domains so their redirects keep a valid certificate.
+func (c *Certs) wildcardNames() []string {
+	names := []string{"*." + c.srv.cfg.BaseDomain}
+	for _, prev := range c.srv.cfg.PreviousBaseDomains {
+		names = append(names, "*."+prev)
+	}
+	return names
 }
 
 // certLogger logs certificate events (issuance, renewal, ACME errors) at info
@@ -198,7 +209,33 @@ func (c *Certs) decide(ctx context.Context, name string) error {
 		}
 		return errors.New("no tunnel for " + name)
 	}
+	if label, ok := s.cfg.previousLabel(name); ok {
+		// An old hostname from before the base domain moved: a certificate
+		// for its redirect, while the same name is in use under the new base.
+		moved := s.movedHost(name)
+		if moved == "" {
+			return errors.New(label + " is reserved")
+		}
+		if _, blocked := s.blockedReason(moved); blocked {
+			return errors.New(moved + " is blocked")
+		}
+		if s.reg.Lookup(moved) != nil {
+			return nil
+		}
+		if s.cluster != nil {
+			if _, proto, ok := s.cluster.ownerOf(ctx, moved); ok && proto == protocol.ProtoHTTP {
+				return nil
+			}
+		}
+		if d, err := s.store.ResolveDomain(ctx, moved); err == nil && d.Hostname == moved {
+			return nil
+		}
+		return errors.New("no tunnel for " + moved)
+	}
 	d, err := s.store.ResolveDomain(ctx, name)
+	if err == nil && d.Kind == "subdomain" {
+		return errors.New(name + " is a static hostname left under a previous base domain")
+	}
 	if err == nil && d.Approval != "approved" {
 		return errors.New(name + " is not approved")
 	}
@@ -226,7 +263,10 @@ func (c *Certs) Prewarm(host string) {
 // StatusNames lists the certificate names worth reporting to admins.
 func (c *Certs) StatusNames() []string {
 	names := []string{c.srv.cfg.DashboardHost}
-	if c.wildcard {
+	if c.wildcardCfg != nil {
+		names = append(c.wildcardNames(), names...)
+	} else if c.wildcard {
+		// A manual certificate covers the base domain only.
 		names = append([]string{"*." + c.srv.cfg.BaseDomain}, names...)
 	}
 	return names

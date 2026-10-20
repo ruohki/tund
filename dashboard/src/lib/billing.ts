@@ -304,6 +304,37 @@ export async function syncSubscription(input: Stripe.Subscription | string) {
   await notify("tund_config", { kind: "plans" });
 }
 
+/** Subscriptions an account pays for that Stripe could still charge (its own Pro and the teams it pays for). */
+export async function openSubscriptionsOf(userId: string): Promise<{ id: string; plan: Plan }[]> {
+  const rows = await db()`
+    select id, plan from subscriptions where user_id = ${userId} and status not in ('canceled', 'incomplete_expired')`;
+  return rows.map((r) => ({ id: r.id as string, plan: r.plan as Plan }));
+}
+
+/**
+ * Ends them at once, without a refund, before the account is deleted: nobody
+ * would be left to cancel them. Stripe keeps the customer and the invoices.
+ * Throws BillingError when Stripe can't be reached, so the account stays.
+ */
+export async function cancelSubscriptionsOf(userId: string): Promise<number> {
+  const subs = await openSubscriptionsOf(userId);
+  if (!subs.length) return 0;
+  const client = await stripe();
+  for (const s of subs) {
+    try {
+      await client.subscriptions.cancel(s.id);
+    } catch (err) {
+      // Gone at Stripe already (deleted in the Stripe dashboard).
+      if ((err as { code?: string }).code !== "resource_missing") {
+        throw new BillingError(`Couldn't cancel subscription ${s.id} at Stripe: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    await db()`update subscriptions set status = 'canceled', updated_at = now() where id = ${s.id}`;
+  }
+  await notify("tund_config", { kind: "plans" });
+  return subs.length;
+}
+
 export type SubscriptionRow = {
   id: string;
   plan: Plan;

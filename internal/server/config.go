@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -72,6 +73,9 @@ type Config struct {
 	// RedirectHosts permanently redirect to the dashboard (e.g. a previous
 	// dashboard domain after a move).
 	RedirectHosts map[string]bool
+	// PreviousBaseDomains are base domains tunnels used before a move (see
+	// basedomain.go): their hostnames redirect to the same label under BaseDomain.
+	PreviousBaseDomains []string
 }
 
 func env(key, def string) string {
@@ -263,6 +267,15 @@ func LoadConfig() (*Config, error) {
 	for _, h := range strings.FieldsFunc(env("TUND_REDIRECT_HOSTS", ""), func(r rune) bool { return r == ',' || r == ' ' }) {
 		if h = normalizeHost(h); h != "" && h != c.DashboardHost {
 			c.RedirectHosts[h] = true
+		}
+	}
+	for _, h := range strings.FieldsFunc(env("TUND_PREVIOUS_BASE_DOMAINS", ""), func(r rune) bool { return r == ',' || r == ' ' }) {
+		switch h = normalizeHost(h); {
+		case h == "" || slices.Contains(c.PreviousBaseDomains, h):
+		case h == c.BaseDomain || strings.HasSuffix(h, "."+c.BaseDomain):
+			errs = append(errs, fmt.Errorf("TUND_PREVIOUS_BASE_DOMAINS: %s is the base domain or under it; list the base domains tunnels used before", h))
+		default:
+			c.PreviousBaseDomains = append(c.PreviousBaseDomains, h)
 		}
 	}
 	if c.AutoPin, err = envBool("TUND_AUTO_PIN", true); err != nil {

@@ -10,6 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { LimitsForm } from "./limits-form";
 import { FeatureForm } from "./feature-form";
 import { identitiesOf } from "@/lib/oauth";
+import { NOTICE_DAYS } from "@/lib/inactive-accounts";
 import { smtpConfigured } from "@/lib/mail";
 import { listTunnels } from "@/lib/metrics";
 import { isUuid } from "@/lib/requests";
@@ -18,16 +19,17 @@ import { ConfirmSubmit } from "@/components/client-ui";
 import { adminDisableTwoFactorAction, deleteUserAction } from "@/app/actions/admin";
 import { setProGrantedAction } from "@/app/actions/billing";
 import { PLAN_LABEL, proSources } from "@/lib/plans";
-import { proSubscription } from "@/lib/billing";
+import { openSubscriptionsOf, proSubscription } from "@/lib/billing";
 import { FlagSwitch, ResetPasswordButton, StopTunnelForm } from "../../admin-forms";
 import { FlagUserForm } from "../../abuse/abuse-forms";
 import { ApprovalBadge } from "../../domains/approval-badge";
 
 export const metadata: Metadata = { title: "User" };
 
-export default async function AdminUserPage({ params }: PageProps<"/admin/users/[id]">) {
+export default async function AdminUserPage({ params, searchParams }: PageProps<"/admin/users/[id]">) {
   const admin = await requireAdmin();
   const { id } = await params;
+  const { delete_error: deleteError } = await searchParams;
   if (!isUuid(id)) notFound();
   const sql = db();
   const [u] = await sql`select * from users where id = ${id}`;
@@ -53,7 +55,12 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
     monthUsage(id),
     getSettings(),
   ]);
-  const [identities, sources, proSub] = await Promise.all([identitiesOf(id), proSources(id), proSubscription(id)]);
+  const [identities, sources, proSub, openSubs] = await Promise.all([
+    identitiesOf(id),
+    proSources(id),
+    proSubscription(id),
+    openSubscriptionsOf(id),
+  ]);
   const pro = sources.granted || sources.subscription || sources.teams.length > 0;
   const limits = await effectiveLimits({ id, isAdmin: Boolean(u.is_admin) });
   const monthBytes = usage.bytesIn + usage.bytesOut;
@@ -88,7 +95,15 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
                 {counts.passkeys} {counts.passkeys === 1 ? "passkey" : "passkeys"}
               </Badge>
             ) : null}
+            {u.inactivity_notice_at && u.inactivity_notice_at >= u.last_seen_at ? (
+              <Badge tone="danger">
+                Deleted for inactivity on {formatDateTime(new Date(u.inactivity_notice_at.getTime() + NOTICE_DAYS * 86_400_000))}
+              </Badge>
+            ) : null}
             <span className="text-muted">joined {formatDateTime(u.created_at)}</span>
+            <span className="text-muted" title={formatDateTime(u.last_seen_at)}>
+              last active {timeAgo(u.last_seen_at)}
+            </span>
           </span>
         }
       />
@@ -183,10 +198,32 @@ export default async function AdminUserPage({ params }: PageProps<"/admin/users/
             <ResetPasswordButton id={u.id} disabled={!mailOn} />
             {!mailOn ? <p className="text-[12.5px] text-muted">Needs email (Admin → Email).</p> : null}
             {!self ? (
-              <form action={deleteUserAction}>
+              <form action={deleteUserAction} className="flex flex-col gap-2">
                 <input type="hidden" name="id" value={u.id} />
                 <input type="hidden" name="redirect" value="list" />
-                <ConfirmSubmit confirmText="Delete account and all its data?">Delete account</ConfirmSubmit>
+                <div>
+                  <ConfirmSubmit
+                    confirmText={
+                      openSubs.length
+                        ? `Delete account and all its data, and cancel ${openSubs.length === 1 ? "its subscription" : `its ${openSubs.length} subscriptions`} at Stripe now?`
+                        : "Delete account and all its data?"
+                    }
+                  >
+                    Delete account
+                  </ConfirmSubmit>
+                </div>
+                {openSubs.length ? (
+                  <p className="text-[12.5px] text-muted">
+                    Cancels what it pays for at Stripe right away, without a refund:{" "}
+                    {openSubs.map((s) => PLAN_LABEL[s.plan]).join(", ")}.
+                  </p>
+                ) : null}
+                {deleteError === "billing" ? (
+                  <p role="alert" className="text-[12.5px] text-danger">
+                    Stripe couldn&apos;t cancel the subscriptions, so the account wasn&apos;t deleted. Check Admin → Billing, or
+                    cancel them in Stripe and try again.
+                  </p>
+                ) : null}
               </form>
             ) : null}
           </div>

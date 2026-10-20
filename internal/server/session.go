@@ -752,6 +752,10 @@ func (s *Server) resolveExplicit(ctx context.Context, userID string, b *protocol
 	var label string
 	if b.Hostname != "" {
 		host := normalizeHost(b.Hostname)
+		if label, ok := s.cfg.previousLabel(host); ok {
+			// --hostname flags and saved configs from before the base domain moved.
+			host = label + "." + base
+		}
 		if !strings.HasSuffix(host, "."+base) {
 			if !validHostname(host) {
 				return "", nil, bindError("invalid hostname " + host)
@@ -762,6 +766,11 @@ func (s *Server) resolveExplicit(ctx context.Context, userID string, b *protocol
 			}
 			if err != nil || !s.canUseDomain(ctx, d, userID) {
 				d = nil
+			}
+			if d != nil && d.Kind == "subdomain" {
+				// A static hostname left under a previous base domain (its new
+				// name was taken or reserved): not a custom domain.
+				return "", nil, bindError(host + " is no longer a hostname of this server; pin a name under " + base)
 			}
 			// A team's custom domain works for its members when the team has a plan.
 			if ok, err := s.customDomainUsable(ctx, d, userID); err != nil {

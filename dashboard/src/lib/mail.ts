@@ -96,16 +96,64 @@ ${button}
   return { html, text };
 }
 
-export function verifyEmail(instance: string, url: string): Mail {
+export function verifyEmail(instance: string, url: string, deleteAfterDays = 0): Mail {
   return {
     subject: `Confirm your email address for ${instance}`,
     ...render(instance, {
       heading: "Confirm your email address",
       paragraphs: [
         "Click the button to confirm this address. Until you do, your account can't log in a terminal or create auth tokens.",
-        "The link works for 24 hours.",
+        deleteAfterDays > 0
+          ? `The link works for 24 hours. Accounts that aren't confirmed are deleted ${deleteAfterDays} ${deleteAfterDays === 1 ? "day" : "days"} after the last link; you can send a new one from the dashboard.`
+          : "The link works for 24 hours.",
       ],
       action: { label: "Confirm email address", url },
+    }),
+  };
+}
+
+export function emailChangeEmail(instance: string, url: string): Mail {
+  return {
+    subject: `Confirm your new email address for ${instance}`,
+    ...render(instance, {
+      heading: "Confirm your new email address",
+      paragraphs: [
+        `Someone asked to make this the email address of their ${esc(instance)} account. Open the link while signed in to that account to confirm it; until then the account keeps its current address.`,
+        "The link works for 24 hours. If you didn't ask for this, ignore this email.",
+      ],
+      action: { label: "Confirm the new address", url },
+    }),
+  };
+}
+
+export function accountDeletedEmail(instance: string): Mail {
+  return {
+    subject: `Your ${instance} account was deleted`,
+    ...render(instance, {
+      heading: "Your account was deleted",
+      paragraphs: [
+        `Your ${esc(instance)} account was deleted from its settings, with its tunnels, reserved hostnames, domains, tokens and captured traffic.`,
+        `If you didn't do this, someone else could sign in to your account: tell the operators of ${esc(instance)}.`,
+      ],
+      footer: `This is the last email ${instance} sends to this address.`,
+    }),
+  };
+}
+
+export function inactiveAccountEmail(
+  instance: string,
+  o: { email: string; lastSeen: string; months: number; deleteOn: string; url: string },
+): Mail {
+  return {
+    subject: `Your ${instance} account will be deleted on ${o.deleteOn}`,
+    ...render(instance, {
+      heading: "Your account is about to be deleted",
+      paragraphs: [
+        `Nobody has signed in to the account <strong>${esc(o.email)}</strong>, used its tokens or connected a client since ${esc(o.lastSeen)}. ${esc(instance)} deletes accounts that stay unused for ${o.months} ${o.months === 1 ? "month" : "months"}, together with their tunnels, reserved hostnames, domains and captured traffic.`,
+        `To keep it, sign in before ${esc(o.deleteOn)}. If you don't need it anymore, there's nothing to do.`,
+      ],
+      action: { label: "Sign in to keep the account", url: o.url },
+      footer: `You get this because ${instance} deletes accounts after ${o.months} ${o.months === 1 ? "month" : "months"} without use.`,
     }),
   };
 }

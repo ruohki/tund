@@ -132,11 +132,18 @@ type Account struct {
 func (s *Store) AuthenticateToken(ctx context.Context, token string) (*Account, error) {
 	var a Account
 	err := s.pool.QueryRow(ctx, `
-		update authtokens t set last_used_at = now()
-		from users u
-		where t.token_hash = $1 and u.id = t.user_id
-		returning t.user_id::text, t.id::text, u.email, u.is_admin, u.disabled_at is not null,
-			u.trusted or user_is_paying(u.id), u.email_verified_at is not null`, sha256Hex(token)).
+		with a as (
+			update authtokens t set last_used_at = now()
+			from users u
+			where t.token_hash = $1 and u.id = t.user_id
+			returning t.user_id, t.id, u.email, u.is_admin, u.disabled_at is not null as disabled,
+				u.trusted or user_is_paying(u.id) as trusted, u.email_verified_at is not null as verified
+		), seen as (
+			-- Account activity (inactive accounts get deleted); hourly is precise enough.
+			update users set last_seen_at = now()
+			where id = (select user_id from a) and last_seen_at < now() - interval '1 hour'
+		)
+		select user_id::text, id::text, email, is_admin, disabled, trusted, verified from a`, sha256Hex(token)).
 		Scan(&a.UserID, &a.TokenID, &a.Email, &a.IsAdmin, &a.Disabled, &a.Trusted, &a.EmailVerified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
@@ -179,7 +186,10 @@ func (s *Store) CreateAgentSession(ctx context.Context, r AgentSessionRow) (stri
 }
 
 func (s *Store) EndAgentSession(ctx context.Context, id string) error {
-	_, err := s.pool.Exec(ctx, `update agent_sessions set disconnected_at = now() where id = $1`, id)
+	// A client that stayed connected for months was in use all along.
+	_, err := s.pool.Exec(ctx, `
+		with e as (update agent_sessions set disconnected_at = now() where id = $1 returning user_id)
+		update users set last_seen_at = now() where id = (select user_id from e)`, id)
 	return err
 }
 

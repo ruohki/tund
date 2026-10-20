@@ -6,7 +6,7 @@ import { resendVerificationAction } from "@/app/actions/password";
 import { SubmitButton } from "./client-ui";
 
 /** Shown until an account confirms its address, while the server requires it. */
-export function VerifyBanner({ email }: { email: string }) {
+export function VerifyBanner({ email, deleteAfterDays }: { email: string; deleteAfterDays: number }) {
   const [state, action] = useActionState(resendVerificationAction, null);
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sodium/60 bg-sodium-wash px-4 py-3">
@@ -14,7 +14,10 @@ export function VerifyBanner({ email }: { email: string }) {
         <MailWarning size={16} className="mt-0.5 shrink-0 text-sodium-ink" />
         <span>
           <span className="font-semibold">Confirm your email address.</span> We sent a link to {email}. Until you open it,
-          you can&apos;t log in a terminal or create auth tokens.
+          you can&apos;t log in a terminal or create auth tokens
+          {deleteAfterDays > 0
+            ? `, and ${deleteAfterDays} ${deleteAfterDays === 1 ? "day" : "days"} after the last link the account is deleted.`
+            : "."}
           {state?.ok ? <span className="ml-1 text-ok">{state.ok}</span> : null}
           {state?.error ? <span className="ml-1 text-danger">{state.error}</span> : null}
         </span>
