@@ -11,8 +11,8 @@ tund http 3000                                         # first run opens the bro
 tund                                                    (Ctrl+C to quit)
 Session     online
 Account     you@example.com
-Inspector   https://tund.io/inspect?host=brave-otter-4821.tund.io
-Forwarding  https://brave-otter-4821.tund.io → http://localhost:3000
+Inspector   https://tund.io/inspect?host=brave-otter-4821.on.tund.io
+Forwarding  https://brave-otter-4821.on.tund.io → http://localhost:3000
 ```
 
 tund works in two ways from the same code:
@@ -163,7 +163,7 @@ All members must use `--pool` and the same visitor-facing options (password/OIDC
 ```sh
 tund tcp 22                                    # tcp://tund.io:20417 → localhost:22 (SSH, databases, game servers …)
 tund tcp 5432 --remote-port 20432 --pin        # a fixed port, reserved for your account
-tund tls 8443 --subdomain secure               # tls://secure.tund.io, TLS passthrough: the edge never decrypts
+tund tls 8443 --subdomain secure               # tls://secure.on.tund.io, TLS passthrough: the edge never decrypts
 tund tls 3000 --domain app.example.com --terminate-cert cert.pem --terminate-key key.pem   # TLS ends on your machine
 tund http 3000 --allow-ip 203.0.113.0/24       # IP allow lists work for every tunnel type
 ```
@@ -188,7 +188,7 @@ tund serve ./share --subdomain files --pin --password s3cret-share   # keep http
 ```
 
 ```
-Forwarding  https://quiet-heron-2817.tund.io → ~/inbox  [upload]  [password]
+Forwarding  https://quiet-heron-2817.on.tund.io → ~/inbox  [upload]  [password]
             visitors can browse, download and upload files · uploads never replace existing files
             hidden from visitors: dotfiles and secret files (.env, keys, credentials)
 
@@ -204,14 +204,14 @@ Without `--password` or `--oidc`, tund doesn't start and suggests the command ag
 curl works with password shares (shares behind `--oidc` are for browsers only):
 
 ```sh
-curl -u :s3cret-share https://files.tund.io/photos/                                # list: one name per line, folders end with /
-curl -u :s3cret-share -H 'Accept: application/json' https://files.tund.io/photos/  # the same as JSON
-curl -u :s3cret-share -OJ https://files.tund.io/photos/IMG_0001.jpg                # download under the shared name
-curl -u :s3cret-share -OJ https://files.tund.io/                                   # a shared single file
-curl -u :s3cret-share -C - -o ubuntu.iso https://files.tund.io/isos/ubuntu.iso     # resume (-C - can't be combined with -J)
-curl -u :s3cret-share -T report.pdf https://files.tund.io/inbox/                   # upload; the trailing / keeps the local name
-curl -u :s3cret-share -T report.pdf https://files.tund.io/inbox/q3.pdf             # upload under another name
-curl -u :s3cret-share -F file=@a.jpg -F file=@b.jpg https://files.tund.io/inbox/   # several files in one request
+curl -u :s3cret-share https://files.on.tund.io/photos/                                # list: one name per line, folders end with /
+curl -u :s3cret-share -H 'Accept: application/json' https://files.on.tund.io/photos/  # the same as JSON
+curl -u :s3cret-share -OJ https://files.on.tund.io/photos/IMG_0001.jpg                # download under the shared name
+curl -u :s3cret-share -OJ https://files.on.tund.io/                                   # a shared single file
+curl -u :s3cret-share -C - -o ubuntu.iso https://files.on.tund.io/isos/ubuntu.iso     # resume (-C - can't be combined with -J)
+curl -u :s3cret-share -T report.pdf https://files.on.tund.io/inbox/                   # upload; the trailing / keeps the local name
+curl -u :s3cret-share -T report.pdf https://files.on.tund.io/inbox/q3.pdf             # upload under another name
+curl -u :s3cret-share -F file=@a.jpg -F file=@b.jpg https://files.on.tund.io/inbox/   # several files in one request
 ```
 
 A taken name is never replaced; the response says which name was used. A folder URL without the trailing `/` answers 409 instead of saving the file next to the folder, and uploads can't be resumed: send a broken-off file again in full, without `-C`. `curl -OJ` writes letters outside ASCII as `_` (`Café.pdf` arrives as `Caf_.pdf`); browsers keep the name.
@@ -310,7 +310,7 @@ Teams share OIDC providers and domains between accounts. Create one under *Teams
 
 ## Static hostnames
 
-A static hostname is a name on the hosted domain (`myapp.tund.io`) pinned to your account, so nobody else can take it and your URL never changes. Every account gets one automatically on its first `tund http`. Claim more with `--pin` or in the dashboard under *Domains* (pick a name or a random one), mark one as the default, or pin the hostname of a running tunnel from *Tunnels*. Each static hostname can carry its own access policy (password or OIDC). Set `TUND_AUTO_PIN=false` to turn off the automatic first hostname.
+A static hostname is a name on the hosted domain (`myapp.on.tund.io`) pinned to your account, so nobody else can take it and your URL never changes. Every account gets one automatically on its first `tund http`. Claim more with `--pin` or in the dashboard under *Domains* (pick a name or a random one), mark one as the default, or pin the hostname of a running tunnel from *Tunnels*. Each static hostname can carry its own access policy (password or OIDC). Set `TUND_AUTO_PIN=false` to turn off the automatic first hostname.
 
 ## Custom domains
 

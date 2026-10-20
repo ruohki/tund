@@ -546,7 +546,7 @@ API `GET /me` adds `"usage": {"month_bytes_in","month_bytes_out","month_requests
 
 ### DNS (hosted instance)
 
-`tund.io` has CAA records allowing only the instance's own Let's Encrypt accounts (production + staging `accounturi`s, `issue` and `issuewild`). Without them a TLS-passthrough tunnel could answer an HTTP-01 challenge for its own hostname and obtain a trusted certificate for `x.tund.io`, bypassing the warning page. Tunnels under `*.on.tund.io` are covered by the same records: `on.tund.io` has no CAA of its own, so CAs use `tund.io`'s. **If the certificate storage (and with it the ACME account) is ever recreated, the CAA records must be updated**, and edge nodes must share the certificate storage (they do: Postgres).
+`tund.io` has CAA records allowing only the instance's own Let's Encrypt accounts (production + staging `accounturi`s, `issue` and `issuewild`). Without them a TLS-passthrough tunnel could answer an HTTP-01 challenge for its own hostname and obtain a trusted certificate for `x.on.tund.io`, bypassing the warning page. Tunnels under `*.on.tund.io` are covered by the same records: `on.tund.io` has no CAA of its own, so CAs use `tund.io`'s. **If the certificate storage (and with it the ACME account) is ever recreated, the CAA records must be updated**, and edge nodes must share the certificate storage (they do: Postgres).
 
 ### Settings (Admin → Settings → Abuse protection)
 

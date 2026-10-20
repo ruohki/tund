@@ -60,7 +60,7 @@ Usually within a second or two the log shows the tunnel coming online, or why it
 
 ```
 2026-10-14T00:44:00+02:00 session online account=ana@acme.com server_version=0.8.0
-2026-10-14T00:44:01+02:00 tunnel online name=serve-designs url=https://quiet-heron-2817.tund.io local=~/work/designs auth=password inspect="https://tund.io/inspect?host=quiet-heron-2817.tund.io"
+2026-10-14T00:44:01+02:00 tunnel online name=serve-designs url=https://quiet-heron-2817.on.tund.io local=~/work/designs auth=password inspect="https://tund.io/inspect?host=quiet-heron-2817.on.tund.io"
 
 2026-10-14T00:44:01+02:00 tunnel failed name=http-3000 local=http://localhost:3000 error="…"
 tund: …                      (the process exited; the message says what to fix)
@@ -97,7 +97,7 @@ Once the tunnel is online, report:
 
 For example:
 
-> Your design files are shared at https://quiet-heron-2817.tund.io
+> Your design files are shared at https://quiet-heron-2817.on.tund.io
 > Password: `3f9c2a7be01d4c56`
 > Visitors can browse and download, not change anything. The link works while this machine is on and until the share is stopped: tell me when you're done, or run `kill 48213`.
 
