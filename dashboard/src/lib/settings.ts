@@ -144,7 +144,17 @@ export type Settings = {
   terms_markdown: string;
   acceptable_use_markdown: string;
   privacy_markdown: string;
-  // Empty = no imprint page.
+  // Imprint (§ 5 DDG): /imprint is generated from these once operator,
+  // address and email are set; imprint_markdown replaces the generated text.
+  imprint_operator: string;
+  imprint_representative: string;
+  imprint_address: string;
+  imprint_email: string;
+  imprint_phone: string;
+  imprint_register: string;
+  imprint_vat_id: string;
+  imprint_responsible: string;
+  imprint_languages: string;
   imprint_markdown: string;
   smtp: SmtpSettings | null;
   oauth: OAuthSettings;
@@ -154,11 +164,11 @@ export type Settings = {
 export type SettingKey = keyof Settings;
 export type EditableKey = Exclude<SettingKey, "smtp" | "oauth" | "billing">;
 
-type Kind = "bool" | "int" | "string" | "signup" | "enum" | "list" | "secret" | "markdown";
+type Kind = "bool" | "int" | "string" | "text" | "signup" | "enum" | "list" | "secret" | "markdown";
 
 export type SettingDef = {
   key: EditableKey;
-  group: "Sign-up & accounts" | "Limits" | "Pro plan" | "Teams" | "Abuse protection" | "Traffic capture & retention" | "Branding" | "Legal pages";
+  group: "Sign-up & accounts" | "Limits" | "Pro plan" | "Teams" | "Abuse protection" | "Traffic capture & retention" | "Branding" | "Imprint" | "Legal pages";
   label: string;
   help: string;
   kind: Kind;
@@ -612,6 +622,78 @@ export const SETTING_DEFS: SettingDef[] = [
     fallback: () => false,
   },
   {
+    key: "imprint_operator",
+    group: "Imprint",
+    label: "Operator",
+    help: "Your full name, or your company's name with its legal form (Example GmbH). Once operator, address and email are filled in, /imprint is published and linked from every page. Operators in Germany must have one (§ 5 DDG).",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_representative",
+    group: "Imprint",
+    label: "Represented by",
+    help: "Companies only: who legally represents it, such as the managing directors. Leave empty as an individual.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_address",
+    group: "Imprint",
+    label: "Postal address",
+    help: "An address where you can be served legal documents; a P.O. box isn't enough. One line per row.",
+    kind: "text",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_email",
+    group: "Imprint",
+    label: "Email address",
+    help: "Required. Also named as the contact point for authorities and users under the Digital Services Act.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_phone",
+    group: "Imprint",
+    label: "Phone number",
+    help: "Optional, but German courts expect a second quick way to reach you besides email, and a phone number is the usual one.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_register",
+    group: "Imprint",
+    label: "Register entry",
+    help: "If you're in a register: the court and number, such as Amtsgericht Berlin-Charlottenburg, HRB 123456.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_vat_id",
+    group: "Imprint",
+    label: "VAT ID or business ID",
+    help: "Your VAT ID (USt-IdNr., DE123456789) or business ID (W-IdNr., DE123456789-00001), if you have one.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_responsible",
+    group: "Imprint",
+    label: "Responsible for editorial content",
+    help: "Only if you publish journalistic or editorial content such as a blog (§ 18(2) MStV): name and address of the person responsible.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "imprint_languages",
+    group: "Imprint",
+    label: "Languages you answer in",
+    help: "Named for the Digital Services Act contact point (Art. 11 and 12 DSA); include an official language of the country you operate from.",
+    kind: "string",
+    fallback: () => "German or English",
+  },
+  {
     key: "terms_markdown",
     group: "Legal pages",
     label: "Terms of service (/terms)",
@@ -638,8 +720,8 @@ export const SETTING_DEFS: SettingDef[] = [
   {
     key: "imprint_markdown",
     group: "Legal pages",
-    label: "Imprint / Impressum (/imprint)",
-    help: "Markdown: who runs this instance, with a postal address and a way to reach you. Operators in Germany must publish one (§ 5 DDG). Empty = no imprint page and no links to it.",
+    label: "Imprint, your own text (/imprint)",
+    help: "Markdown. Replaces the imprint generated from the Imprint section, for what it can't express (a supervisory authority, professional rules). Leave empty to use the generated text.",
     kind: "markdown",
     fallback: () => "",
   },
@@ -674,6 +756,8 @@ export function coerce(key: EditableKey, raw: unknown): Settings[EditableKey] | 
     }
     case "string":
       return typeof raw === "string" ? raw.trim().slice(0, 200) : null;
+    case "text":
+      return typeof raw === "string" ? raw.replace(/\r\n/g, "\n").trim().slice(0, 1000) : null;
     case "signup":
       return raw === "open" || raw === "invite" || raw === "closed" ? raw : null;
     case "enum":

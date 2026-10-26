@@ -27,6 +27,7 @@ type Runtime struct {
 	CustomDomains            bool   // users.custom_domains overrides it
 	Passthrough              bool   // TCP and TLS tunnels; users.passthrough overrides it
 	InstanceName             string // Admin → Settings → Branding; shown on the edge's pages
+	Imprint                  bool   // the dashboard publishes /imprint; the edge's pages link it
 
 	// Pro plan (pro_* settings): replaces the limits above for Pro accounts,
 	// which always get custom domains and TCP/TLS tunnels (see plan.go).
@@ -90,6 +91,7 @@ func (s *Server) loadSettings(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	imprint := map[string]string{}
 	for key, raw := range rows {
 		var ok bool
 		switch key {
@@ -165,6 +167,10 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			ok = setInt(raw, &r.CaptureMaxBody, 1024, 10<<20)
 		case "require_email_verification":
 			ok = json.Unmarshal(raw, &r.RequireEmailVerification) == nil
+		case "imprint_markdown", "imprint_operator", "imprint_address", "imprint_email":
+			var v string
+			ok = json.Unmarshal(raw, &v) == nil
+			imprint[key] = strings.TrimSpace(v)
 		case "smtp":
 			var smtp struct {
 				Host string `json:"host"`
@@ -178,6 +184,10 @@ func (s *Server) loadSettings(ctx context.Context) error {
 			logf("settings: ignoring invalid value for %s: %s", key, raw)
 		}
 	}
+	// Mirrors imprintReady in dashboard/src/lib/legal.ts: the operator's own
+	// text, or operator, address and email to generate it from.
+	r.Imprint = imprint["imprint_markdown"] != "" ||
+		(imprint["imprint_operator"] != "" && imprint["imprint_address"] != "" && imprint["imprint_email"] != "")
 	if _, set := rows["pro_limit_transfer_gb"]; !set {
 		r.ProTransferGB = proTransferFactor * r.TransferGB // default: 10× Free
 	}

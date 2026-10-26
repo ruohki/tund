@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { config } from "@/lib/config";
+import { imprintReady } from "@/lib/legal";
 import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ const PRIVATE = [
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
   const [open, imprint] = await getSettings().then(
-    (s) => [s.signup_mode === "open", Boolean(s.imprint_markdown.trim())],
+    (s) => [s.signup_mode === "open", imprintReady(s)],
     () => [false, false],
   );
   const base = config().dashboardUrl;

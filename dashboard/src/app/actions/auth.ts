@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { endSession, safeNext, signIn, startSession, usersExist, withNext } from "@/lib/auth";
 import { hashPassword, MIN_PASSWORD_LENGTH, verifyPassword } from "@/lib/password";
@@ -76,6 +77,7 @@ async function createAccount(fd: FormData, opts: AccountOptions): Promise<FormSt
   }
   if (!userId) redirect(withNext("/login", fd.get("next")));
   opts.onCreated?.();
+  await audit({ id: userId, email }, "user.signup", email, opts.first ? { first: true } : {});
   if (mustVerify) await sendVerification(userId, email);
   if (!opts.first) await notifyAdminsOfSignup(userId, email);
   await startSession(userId);

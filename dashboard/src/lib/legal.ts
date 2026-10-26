@@ -5,12 +5,13 @@ import { formatBytes } from "./format";
 import { smtpConfigured, verificationRequired } from "./mail";
 import { enabledProviders } from "./oauth";
 import { PROVIDER_LABEL } from "./oauth-shared";
-import { getSettings } from "./settings";
+import { getSettings, type Settings } from "./settings";
 
-// /terms, /acceptable-use and /privacy: operator markdown from settings, or
-// generic defaults naming the instance. The defaults describe how the service
-// works and make no legal claims; operators replace them under Admin →
-// Settings. /imprint has no default: only the operator knows who they are.
+// /terms, /acceptable-use, /privacy and /imprint: operator markdown from
+// settings, or defaults naming the instance. The defaults describe how the
+// service works and make no legal claims; operators replace them under Admin →
+// Settings. The imprint is generated from the operator's details (Admin →
+// Settings → Imprint) and doesn't exist until they're filled in.
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -47,6 +48,30 @@ const markdown = new Marked({
 
 export function renderMarkdown(src: string): string {
   return markdown.parse(src, { async: false });
+}
+
+/** Escapes operator input so it shows as typed instead of turning into Markdown. */
+const md = (s: string) => s.replace(/[\\`*_{}[\]()#+\-.!|<>~]/g, "\\$&");
+
+const EMAIL = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]+$/;
+const mailLink = (email: string) => (EMAIL.test(email) ? `[${md(email)}](mailto:${email})` : md(email));
+
+/** The address field's non-empty lines. */
+const addressLines = (s: Settings) =>
+  s.imprint_address
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+/** Operator, address and email are filled in, so the imprint can be generated. */
+const imprintDetails = (s: Settings) => Boolean(s.imprint_operator.trim() && addressLines(s).length && s.imprint_email.trim());
+
+/**
+ * Whether /imprint exists (the operator's own text, or the details to generate
+ * it); links to it only appear then. Mirrored in internal/server/settings.go.
+ */
+export function imprintReady(s: Settings): boolean {
+  return Boolean(s.imprint_markdown.trim()) || imprintDetails(s);
 }
 
 export type Page = "terms" | "acceptable-use" | "privacy" | "imprint";
@@ -137,18 +162,26 @@ async function defaultPrivacy(): Promise<string> {
   const { dashboardHost } = config();
   const name = s.instance_name || "TUNd";
   const [providers, mail, verifying] = await Promise.all([enabledProviders(), smtpConfigured(), verificationRequired()]);
+  // retention_days 0 (only possible through TUND_RETENTION_DAYS) turns pruning off.
   const retention = days(s.retention_days);
+  const pruned = (when: string) => (s.retention_days > 0 ? `deleted ${retention} ${when}` : "kept without a time limit");
   const auditDays = s.audit_retention_days;
   const contact = abuseHref(s.abuse_contact);
-  const imprint = Boolean(s.imprint_markdown.trim());
-  const reachOperator = imprint
-    ? "the operator named in the [imprint](/imprint)"
-    : contact
-      ? `the operators of ${name} ([${s.abuse_contact}](${contact}))`
-      : `the operators of ${name}`;
-  const responsible = imprint
-    ? "The operator named in the [imprint](/imprint) is responsible for your data (the controller under the GDPR). Contact them with any question about your data."
-    : `The operators of ${name} are responsible for your data (the controller under the GDPR).${contact ? ` Write to [${s.abuse_contact}](${contact}) with any question about your data.` : ""}`;
+  const imprint = imprintReady(s);
+  const operator = md(s.imprint_operator.trim());
+  const email = mailLink(s.imprint_email.trim());
+  const reachOperator = imprintDetails(s)
+    ? `${operator} (${email})`
+    : imprint
+      ? "the operator named in the [imprint](/imprint)"
+      : contact
+        ? `the operators of ${name} ([${s.abuse_contact}](${contact}))`
+        : `the operators of ${name}`;
+  const responsible = imprintDetails(s)
+    ? `**${operator}**, ${addressLines(s).map(md).join(", ")}, is responsible for your data (the controller under the GDPR). Write to ${email} with any question about your data; the [imprint](/imprint) has all contact details.`
+    : imprint
+      ? "The operator named in the [imprint](/imprint) is responsible for your data (the controller under the GDPR). Contact them with any question about your data."
+      : `The operators of ${name} are responsible for your data (the controller under the GDPR).${contact ? ` Write to [${s.abuse_contact}](${contact}) with any question about your data.` : ""}`;
   const review = s.untrusted_custom_domains === "review";
   const turnstile = Boolean(s.turnstile_site_key && s.turnstile_secret_key);
   const inactive = s.inactive_account_months > 0 && mail;
@@ -183,13 +216,14 @@ ${responsible}
 
 ## Your account
 
-- **Account details**: your email address, your name, a hash of your password (never the password itself) and when you last used the account. If you connect ${providers.length ? providerNames : "Google or GitHub"}, the account id and email address they report. With two-factor authentication, its secret (encrypted) and hashed recovery codes; with passkeys, their public keys. The teams you belong to, and invitations with the address they were sent to. Kept while your account exists, to provide the service (Art. 6(1)(b) GDPR).
+- **Account details**: your email address, your name, a hash of your password (never the password itself) and when you last used the account. If you connect ${providers.length ? providerNames : "Google or GitHub"}, the account id and email address they report. With two-factor authentication, its secret (encrypted) and hashed recovery codes; with passkeys, their public keys. The teams you belong to. Kept while your account exists, to provide the service (Art. 6(1)(b) GDPR).
+- **Team invitations**: who sent an invitation, its role and the email address it was sent to, if it names one. Deleted 30 days after it expires; invitations are valid for 7 days (Art. 6(1)(b) and (f) GDPR).
 - **Signed-in browsers**: the IP address and browser of each dashboard session, so you can see and end them. Deleted when the session expires, 30 days after its last use (Art. 6(1)(b) and (f) GDPR: the security of your account).
-- **Terminals**: auth tokens are stored as hashes with the time they were last used. For each client connection, the client version, operating system, machine name and IP address, deleted ${retention} after it disconnects. Logging in a terminal keeps its machine name, operating system and IP address until the login is done or has expired (Art. 6(1)(b) GDPR).
-- **Tunnels and usage**: hostnames, the local address each tunnel forwards to, when it ran, and how much data it transferred per day, for the limits of your plan. Kept while your account exists (Art. 6(1)(b) GDPR).${
+- **Terminals**: auth tokens are stored as hashes with the time they were last used; a token created by logging in a terminal is named after its machine. For each client connection, the client version, operating system, machine name and IP address, ${pruned("after it disconnects")}. While a terminal login is pending, its machine name, operating system and IP address are kept until it's done or has expired (Art. 6(1)(b) GDPR).
+- **Tunnels and usage**: for each tunnel, its hostname, the local address it forwards to and when it ran, ${s.retention_days > 0 ? `deleted with its client connection (${retention} after it disconnects)` : "kept without a time limit"}. Your reserved hostnames and domains, the access rules of protected tunnels (such as allowed email addresses and IP addresses) and how much data you transferred per day, for the limits of your plan, are kept while your account exists (Art. 6(1)(b) GDPR).${
     mail
       ? `
-- **Email**: confirmation links, password resets, team invitations and security notices${inactive ? ", and the notice before an inactive account is deleted," : ""} are sent through ${name}'s mail server (Art. 6(1)(b) GDPR).`
+- **Email**: confirmation links, password resets, team invitations and security notices${inactive ? ", and the notice before an inactive account is deleted," : ""} are sent through ${name}'s mail server. Links are stored as hashes with the address they were sent to, while your account exists, to know which addresses you confirmed (Art. 6(1)(b) GDPR).`
       : ""
   }
 
@@ -197,9 +231,9 @@ ${responsible}
 
 Visitors of tunnels are affected too, without an account.
 
-- **Recorded requests**: requests to HTTP tunnels are recorded with their headers and up to ${formatBytes(s.capture_max_body)} of each request and response body, so the tunnel's owner can inspect and replay them. That includes the visitor's IP address and whatever the request carries, such as cookies and form fields. Deleted after ${retention}.
-- **TCP and TLS tunnels**: the visitor's IP address, the duration and the bytes of each connection, deleted after ${retention}.
-- **Protected tunnels**: after a visitor enters a tunnel's password or signs in, a cookie on its hostname keeps them signed in for 7 days. With single sign-on, the identity that the owner's sign-in provider reports (such as email address and name) is passed on to the owner's service.
+- **Recorded requests**: requests to HTTP tunnels are recorded with their headers and up to ${formatBytes(s.capture_max_body)} of each request and response body, so the tunnel's owner can inspect and replay them. That includes the visitor's IP address and whatever the request carries, such as cookies and form fields. ${s.retention_days > 0 ? `Deleted after ${retention}.` : "Kept without a time limit."}
+- **TCP and TLS tunnels**: the visitor's IP address, the duration and the bytes of each connection, ${s.retention_days > 0 ? `deleted after ${retention}` : "kept without a time limit"}.
+- **Protected tunnels**: after a visitor enters a tunnel's password or signs in, a cookie on its hostname keeps them signed in for 7 days. With single sign-on, the identity that the owner's sign-in provider reports (such as email address and name) is passed on to the owner's service and recorded with each request.
 
 ${name} does this for the account holder who runs the tunnel (Art. 6(1)(b) GDPR) and in its legitimate interest in running a tunnel service (Art. 6(1)(f) GDPR). What a tunnel's own service does with visitors' data is up to its owner; ask them.
 
@@ -207,8 +241,9 @@ ${name} does this for the account holder who runs the tunnel (Art. 6(1)(b) GDPR)
 
 To keep the service and its visitors safe (Art. 6(1)(f) GDPR):
 
-- **Audit log**: security-relevant changes to accounts (sign-up, sign-in methods, passwords, two-factor authentication) and the actions of administrators, with the email address and IP address of whoever made them. ${auditDays > 0 ? `Deleted after ${days(auditDays)}.` : "Kept without a time limit."}
-- **Abuse reports**: reports about tunnels, with the reporter's email address (if given) and IP address. ${auditDays > 0 ? `${days(auditDays)} after a report is closed, the reporter's email and IP address are removed.` : "Kept without a time limit."}${
+- **Audit log**: security-relevant events of accounts (sign-up, passkey sign-ins, sign-in methods, passwords, email address changes, two-factor authentication) and the actions of administrators, with the email address and IP address of whoever made them. ${auditDays > 0 ? `Deleted after ${days(auditDays)}.` : "Kept without a time limit."}
+- **Abuse reports**: reports about tunnels, with the reporter's email address (if given) and IP address. ${auditDays > 0 ? `${days(auditDays)} after a report is closed, the reporter's email and IP address are removed; the report itself is kept to recognize repeated abuse.` : "Kept without a time limit."}
+- **Trust and flags**: administrators can mark accounts as trusted, or flag them for review with a reason, also automatically, for example after a phishing match. Kept while the account exists.${
     s.phishing_heuristics
       ? `
 - **Phishing checks**: pages served by tunnels of accounts that aren't trusted are scanned for signs of phishing.`
@@ -217,9 +252,9 @@ To keep the service and its visitors safe (Art. 6(1)(f) GDPR):
 
 ## Deleting your account
 
-You can delete your account at any time under [Settings](/settings). This removes your tunnels, hostnames, domains, tokens and recorded traffic.${
+You can delete your account at any time under [Settings](/settings). This removes your tunnels, hostnames, domains, tokens and recorded traffic. Domains, sign-in providers and TCP ports you added to a team with other members stay with the team. Audit log entries and abuse reports are kept for the periods above${s.billing.enabled ? ", and billing records for those of tax law" : ""}. A disabled account can't sign in and is kept with the reason it was disabled; to have it deleted, contact ${reachOperator}.${
     inactive
-      ? ` Accounts that nobody signs in to, uses a token of or connects a client with for ${s.inactive_account_months} ${s.inactive_account_months === 1 ? "month" : "months"} are deleted; the owner gets an email 30 days before, and signing in keeps the account.`
+      ? ` Accounts that nobody signs in to, uses a token of or connects a client with for ${s.inactive_account_months} ${s.inactive_account_months === 1 ? "month" : "months"} are deleted; the owner gets an email 30 days before, and signing in keeps the account. This doesn't apply to administrators, disabled accounts, and accounts with a subscription or a granted Pro plan.`
       : ""
   }${unconfirmed ? ` Accounts whose email address isn't confirmed are deleted ${days(s.unverified_account_days)} after the last confirmation link.` : ""}
 ${
@@ -236,9 +271,9 @@ ${others.join("\n")}
 ${name} uses no analytics, advertising or tracking. It only stores what signing in and using the service need:
 
 - a cookie that keeps you signed in to the dashboard, for 30 days after your last visit;
-- short-lived cookies while you sign in${providers.length ? ` (also with ${providerNames})` : ""}, confirm a second factor or use a passkey, and while visitors sign in to a protected tunnel: at most 10 minutes;
+- short-lived cookies while you sign in${providers.length ? ` (also with ${providerNames})` : ""}, confirm or set up a second factor or use a passkey, and while visitors sign in to a protected tunnel: at most 15 minutes;
 - on tunnel hostnames, the 7-day cookie of a protected tunnel${s.browser_warning ? ", and a 7-day cookie that remembers a visitor saw the warning page before a tunnel" : ""};
-- your choice of light or dark theme, in your browser's local storage.
+- your choice of light or dark theme, and of the language of code examples, in your browser's local storage.
 
 ## Your rights
 
@@ -250,7 +285,47 @@ This policy changes when ${name} changes. The current version is always on this 
 `;
 }
 
-/** The page's markdown: the operator's text from settings, or the built-in default (none for the imprint). */
+/**
+ * § 5 DDG imprint from Admin → Settings → Imprint, plus the Digital Services
+ * Act contact point (Art. 11 and 12 DSA) and the consumer dispute resolution
+ * statement (§ 36 VSBG). No link to the EU ODR platform: it closed on
+ * 20 July 2025 and the duty to link it ended with it.
+ */
+async function defaultImprint(): Promise<string> {
+  const s = await getSettings();
+  const { baseDomain } = config();
+  const name = md(s.instance_name || "TUNd");
+  const operator = md(s.imprint_operator.trim());
+  const email = mailLink(s.imprint_email.trim());
+  const [rep, phone, register, vat, responsible] = [
+    s.imprint_representative,
+    s.imprint_phone,
+    s.imprint_register,
+    s.imprint_vat_id,
+    s.imprint_responsible,
+  ].map((v) => v.trim());
+  // A business ID (Wirtschafts-Identifikationsnummer) is the VAT ID's format plus "-00001".
+  const vatLabel = /-\d{5}$/.test(vat) ? "Business identification number (§ 139c AO)" : "VAT identification number (§ 27a UStG)";
+  const languages = md(s.imprint_languages.trim() || "German or English");
+
+  return [
+    "# Imprint",
+    "Information under § 5 DDG.",
+    `## Operator\n\n${operator}  \n${addressLines(s).map(md).join("  \n")}${rep ? `\n\nRepresented by ${md(rep)}` : ""}`,
+    `## Contact\n\nEmail: ${email}${phone ? `  \nPhone: ${md(phone)}` : ""}`,
+    register ? `## Register entry\n\n${md(register)}` : "",
+    vat ? `## ${vatLabel}\n\n${md(vat)}` : "",
+    responsible ? `## Responsible for editorial content (§ 18(2) MStV)\n\n${md(responsible)}` : "",
+    `## Content of tunnels\n\nSites reached through tunnels (addresses under \`*.${baseDomain}\`, and custom domains of users) are run by the users who opened them, not by ${operator}, and those users are responsible for what they serve. To report a tunnel that breaks the law or the [Acceptable Use Policy](/acceptable-use), use the [report form](/report).`,
+    `## Contact point under the Digital Services Act\n\nThe single point of contact for authorities of the EU member states, the European Commission and the European Board for Digital Services (Art. 11 DSA), and for users of ${name} (Art. 12 DSA), is ${email}. You can write to it in ${languages}.`,
+    `## Consumer dispute resolution\n\n${operator} is neither obliged nor willing to take part in dispute resolution proceedings before a consumer arbitration board.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .concat("\n");
+}
+
+/** The page's markdown: the operator's text from settings, or the built-in default. */
 export async function legalMarkdown(page: Page): Promise<{ markdown: string; custom: boolean }> {
   const s = await getSettings();
   const custom = {
@@ -260,11 +335,11 @@ export async function legalMarkdown(page: Page): Promise<{ markdown: string; cus
     imprint: s.imprint_markdown,
   }[page].trim();
   if (custom) return { markdown: custom, custom: true };
-  const fallback = { terms: defaultTerms, "acceptable-use": defaultAcceptableUse, privacy: defaultPrivacy, imprint: async () => "" }[page];
+  const fallback = { terms: defaultTerms, "acceptable-use": defaultAcceptableUse, privacy: defaultPrivacy, imprint: defaultImprint }[page];
   return { markdown: await fallback(), custom: false };
 }
 
-/** Whether the operator published an imprint; links to /imprint only appear then. */
+/** Whether /imprint exists; links to it only appear then. */
 export async function hasImprint(): Promise<boolean> {
-  return Boolean((await getSettings()).imprint_markdown.trim());
+  return imprintReady(await getSettings());
 }

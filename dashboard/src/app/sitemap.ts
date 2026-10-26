@@ -1,12 +1,13 @@
 import type { MetadataRoute } from "next";
 import { config } from "@/lib/config";
+import { imprintReady } from "@/lib/legal";
 import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [open, imprint] = await getSettings().then(
-    (s) => [s.signup_mode === "open", Boolean(s.imprint_markdown.trim())],
+    (s) => [s.signup_mode === "open", imprintReady(s)],
     () => [false, false],
   );
   if (!open) return [];

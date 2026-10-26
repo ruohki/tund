@@ -117,9 +117,19 @@ async function pruneAuditLog(days: number) {
       and (reporter_email <> '' or reporter_ip <> '')`;
 }
 
+/**
+ * Invites stop working 7 days after they're sent; 30 days later they're
+ * deleted, used or not. Until then the invite page can still say "already
+ * used" or "expired".
+ */
+async function pruneInvites() {
+  await db()`delete from team_invites where expires_at < now() - interval '30 days'`;
+}
+
 /** One pass of the cleanup. */
 export async function cleanUpAccounts() {
   const s = await getSettings();
+  await pruneInvites();
   if (s.audit_retention_days > 0) await pruneAuditLog(s.audit_retention_days);
   const months = s.inactive_account_months;
   if (months > 0 && (await smtpConfigured())) {

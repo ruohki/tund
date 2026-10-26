@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { publicConfig } from "@/lib/config";
+import { imprintReady } from "@/lib/legal";
 import { getSettings } from "@/lib/settings";
 import { DESCRIPTION, siteInfo } from "@/lib/seo";
 import { Wordmark } from "../brand";
@@ -98,13 +99,9 @@ const exampleBox = "rounded-md border border-line bg-surface-2 px-3 py-2 font-mo
 export async function Landing() {
   const cfg = publicConfig();
   const site = await siteInfo();
-  const {
-    browser_warning: browserWarning,
-    custom_domains: customDomains,
-    passthrough,
-    imprint_markdown: imprintMarkdown,
-  } = await getSettings();
-  const imprint = Boolean(imprintMarkdown.trim());
+  const settings = await getSettings();
+  const { browser_warning: browserWarning, custom_domains: customDomains, passthrough } = settings;
+  const imprint = imprintReady(settings);
   const url = `${cfg.scheme}://brave-otter-4821.${cfg.baseDomain}${cfg.portSuffix}`;
   const host = url.replace(/^https?:\/\//, "");
 

@@ -62,11 +62,14 @@ export function Sidebar({
   user,
   brand,
   billing,
+  imprint,
 }: {
   user: { email: string; name: string; isAdmin: boolean; pro: boolean };
   brand: string;
   /** Show Billing (Stripe is set up). */
   billing: boolean;
+  /** Link the imprint (the operator published one). */
+  imprint: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -114,6 +117,17 @@ export function Sidebar({
         <div className="mt-3">
           <ThemeToggle />
         </div>
+        <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
+          {[
+            ["/terms", "Terms"],
+            ["/privacy", "Privacy"],
+            ...(imprint ? [["/imprint", "Imprint"]] : []),
+          ].map(([href, label]) => (
+            <Link key={href} href={href} className="underline-offset-4 hover:text-ink hover:underline">
+              {label}
+            </Link>
+          ))}
+        </p>
       </div>
     </div>
   );

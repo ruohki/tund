@@ -339,7 +339,7 @@ Setup:
 
 A public tunnel service will be used for phishing. tund layers several defences:
 
-* **Accounts**: sign-up modes (open, invite-only, closed), email verification, captcha (Cloudflare Turnstile), per-IP rate limits, disposable-email blocking, and Terms and Acceptable Use acceptance. A privacy policy at `/privacy` is generated from the instance's settings (only the third parties and features that are on), and an imprint at `/imprint` appears once you write one; both are under *Admin → Settings → Legal pages*.
+* **Accounts**: sign-up modes (open, invite-only, closed), email verification, captcha (Cloudflare Turnstile), per-IP rate limits, disposable-email blocking, and Terms and Acceptable Use acceptance. A privacy policy at `/privacy` is generated from the instance's settings (only the third parties and features that are on), and an imprint at `/imprint` is generated once you fill in your details under *Admin → Settings → Imprint* (or write your own under *Legal pages*). Every page links both, including the edge's warning, password and offline pages.
 * **Browser warning page**: an ngrok-style interstitial for non-trusted accounts, optionally on custom domains too.
 * **Trust gating**: custom domains (`allow` / `review` / `deny`), TCP and TLS passthrough can be limited to accounts an admin trusts. Under `review`, each new custom domain waits for admin approval, which shows risk signals: domain age from RDAP, deceptive words, punycode lookalikes and Safe Browsing status.
 * **Deceptive hostnames**: non-trusted accounts can't choose names containing brands or words like `login` and `verify` (the list is configurable).

@@ -11,7 +11,7 @@ export type FieldView = {
   group: string;
   label: string;
   help: string;
-  kind: "bool" | "int" | "string" | "signup" | "enum" | "list" | "secret" | "markdown";
+  kind: "bool" | "int" | "string" | "text" | "signup" | "enum" | "list" | "secret" | "markdown";
   min?: number;
   max?: number;
   options?: [string, string][];
@@ -21,7 +21,7 @@ export type FieldView = {
   defaultLabel: string;
 };
 
-const GROUPS = ["Sign-up & accounts", "Limits", "Pro plan", "Teams", "Abuse protection", "Traffic capture & retention", "Branding", "Legal pages"];
+const GROUPS = ["Sign-up & accounts", "Limits", "Pro plan", "Teams", "Abuse protection", "Traffic capture & retention", "Branding", "Imprint", "Legal pages"];
 
 /** kbit/s with the same value in Mbit/s next to it. */
 function KbpsInput({ f, id }: { f: FieldView; id: string }) {
@@ -108,6 +108,16 @@ function Control({ f }: { f: FieldView }) {
           rows={6}
           spellCheck={false}
           className={cn(inputClass, "h-auto py-2 font-mono text-[12.5px] leading-5")}
+        />
+      );
+    case "text":
+      return (
+        <textarea
+          id={id}
+          name={f.key}
+          defaultValue={String(f.value)}
+          rows={4}
+          className={cn(inputClass, "h-auto py-2 leading-5 sm:w-80")}
         />
       );
     case "markdown":

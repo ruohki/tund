@@ -1,8 +1,12 @@
+import Link from "next/link";
 import { SiteWordmark } from "@/components/site-wordmark";
 import { publicConfig } from "@/lib/config";
+import { hasImprint } from "@/lib/legal";
 
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const c = publicConfig();
+  const imprint = await hasImprint();
+  const link = "underline-offset-4 hover:text-ink hover:underline";
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <div className="flex flex-col px-6 py-8 sm:px-12">
@@ -10,7 +14,20 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="flex flex-1 items-center">
           <div className="w-full max-w-sm py-12">{children}</div>
         </div>
-        <p className="text-[12px] text-muted">{c.dashboardHost}</p>
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
+          <span>{c.dashboardHost}</span>
+          <Link href="/terms" className={link}>
+            Terms
+          </Link>
+          <Link href="/privacy" className={link}>
+            Privacy
+          </Link>
+          {imprint ? (
+            <Link href="/imprint" className={link}>
+              Imprint
+            </Link>
+          ) : null}
+        </p>
       </div>
       <div className="relative hidden overflow-hidden border-l border-line bg-surface lg:flex lg:flex-col lg:justify-center lg:px-14">
         <div className="max-w-lg">

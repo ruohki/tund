@@ -1068,8 +1068,15 @@ func (s *Store) Request(ctx context.Context, id, userID string) (*StoredRequest,
 	return &r, nil
 }
 
-// Prune removes captured data older than the retention window.
+// Prune removes expired dashboard sessions and terminal logins, and captured
+// data older than the retention window (none while days <= 0).
 func (s *Store) Prune(ctx context.Context, days int) error {
+	if _, err := s.pool.Exec(ctx, `delete from device_codes where expires_at < now() - interval '1 hour'`); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx, `delete from sessions where expires_at < now()`); err != nil {
+		return err
+	}
 	if days <= 0 {
 		return nil
 	}
@@ -1080,13 +1087,7 @@ func (s *Store) Prune(ctx context.Context, days int) error {
 	if _, err := s.pool.Exec(ctx, `delete from connections where started_at < $1`, cutoff); err != nil {
 		return err
 	}
-	if _, err := s.pool.Exec(ctx, `delete from agent_sessions where disconnected_at < $1`, cutoff); err != nil {
-		return err
-	}
-	if _, err := s.pool.Exec(ctx, `delete from device_codes where expires_at < now() - interval '1 hour'`); err != nil {
-		return err
-	}
-	_, err := s.pool.Exec(ctx, `delete from sessions where expires_at < now()`)
+	_, err := s.pool.Exec(ctx, `delete from agent_sessions where disconnected_at < $1`, cutoff)
 	return err
 }
 

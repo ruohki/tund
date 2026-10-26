@@ -13,12 +13,17 @@ export async function LegalPage({ page }: { page: Page }) {
             ? "This is your own text."
             : page === "privacy"
               ? "This text is generated from this instance's settings; check it, and add what it can't know (such as your hosting providers) in your own version."
-              : "This is the built-in default text."}{" "}
+              : page === "imprint"
+                ? "This text is generated from your details under Imprint; replace it with your own if it doesn't fit."
+                : "This is the built-in default text."}{" "}
           Edit it under{" "}
-          <Link href="/admin/settings#legal-pages" className="font-medium text-ink underline underline-offset-4">
-            Admin → Settings → Legal pages
-          </Link>{" "}
-          (Markdown). Only admins see this note.
+          <Link
+            href={!custom && page === "imprint" ? "/admin/settings#imprint" : "/admin/settings#legal-pages"}
+            className="font-medium text-ink underline underline-offset-4"
+          >
+            Admin → Settings → {!custom && page === "imprint" ? "Imprint" : "Legal pages"}
+          </Link>
+          {!custom && page === "imprint" ? "." : " (Markdown)."} Only admins see this note.
         </p>
       ) : null}
       <article className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />

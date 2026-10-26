@@ -9,7 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return publicPageMetadata("/imprint", "Imprint", `Who runs ${name}.`);
 }
 
-/** Only exists once the operator wrote one (Admin → Settings → Legal pages). */
+/** Only exists once the operator filled in their details (Admin → Settings → Imprint) or wrote their own text. */
 export default async function ImprintPage() {
   if (!(await hasImprint())) notFound();
   return <LegalPage page="imprint" />;

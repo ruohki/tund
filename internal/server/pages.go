@@ -26,7 +26,7 @@ const pageBase = `<!doctype html>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#0d1117;--muted:#5b6472;--line:#e3e6eb;--accent:#0f766e;--accent-fg:#fff;--code:#eef1f4;--danger:#b42318}
 @media (prefers-color-scheme:dark){:root{--bg:#0b0d10;--card:#12151a;--fg:#e8eaed;--muted:#98a1ad;--line:#232830;--accent:#2dd4bf;--accent-fg:#04201d;--code:#1a1f26;--danger:#f97066}}
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg)}
-body{font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+body{font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;display:grid;place-items:center;align-content:center;gap:14px;padding:24px 16px}
 main{width:100%;max-width:480px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px}
 .brand{display:flex;align-items:center;gap:8px;color:var(--muted);font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:24px}
 .brand i{width:8px;height:8px;border-radius:2px;background:var(--accent);display:inline-block}
@@ -50,11 +50,15 @@ ul{margin:10px 0 0;padding-left:18px;color:var(--muted)}li{margin:4px 0}
 .row form{margin:0;display:block}
 .ghost{background:transparent;color:var(--fg);border-color:var(--line)}
 a{color:inherit}
+.legal{display:flex;gap:16px;font-size:12.5px;color:var(--muted)}
+.legal a{text-decoration:none}.legal a:hover{text-decoration:underline}
 </style></head>
 <body><main>
 <div class="brand"><i></i>{{.Brand}}</div>
 {{template "body" .}}
-</main></body></html>`
+</main>
+{{if .LegalURL}}<nav class="legal"><a href="{{.LegalURL}}/privacy">Privacy</a>{{if .Imprint}}<a href="{{.LegalURL}}/imprint">Imprint</a>{{end}}</nav>{{end}}
+</body></html>`
 
 var pageBodies = map[string]string{
 	pageNotFound: `{{define "title"}}No tunnel here{{end}}{{define "body"}}
@@ -166,8 +170,16 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 		data = map[string]any{}
 	}
 	data["Brand"] = defaultInstanceName
-	if rt := s.rt(); rt != nil && rt.InstanceName != "" {
-		data["Brand"] = rt.InstanceName
+	if rt := s.rt(); rt != nil {
+		if rt.InstanceName != "" {
+			data["Brand"] = rt.InstanceName
+		}
+		data["Imprint"] = rt.Imprint
+	}
+	// These pages are the operator's own, so they link the legal pages (§ 5 DDG
+	// wants the imprint reachable from every page).
+	if s.cfg.DashboardHost != "" {
+		data["LegalURL"] = s.cfg.DashboardURL()
 	}
 	var buf bytes.Buffer
 	if err := pageTemplates[page].Execute(&buf, data); err != nil {

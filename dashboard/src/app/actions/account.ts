@@ -168,6 +168,11 @@ export async function changePasswordAction(_: FormState, fd: FormData): Promise<
     return { error: "The current password is incorrect." };
   }
   await db()`update users set password_hash = ${await hashPassword(next)} where id = ${session.user.id}`;
+  await audit(
+    { id: session.user.id, email: session.user.email },
+    row.password_hash === null ? "user.password_set" : "user.password_change",
+    session.user.email,
+  );
   // Sign out everywhere else.
   await db()`delete from sessions where user_id = ${session.user.id} and id <> ${session.id}`;
   refresh();
