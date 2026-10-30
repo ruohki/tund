@@ -156,6 +156,10 @@ export type Settings = {
   imprint_responsible: string;
   imprint_languages: string;
   imprint_markdown: string;
+  // Support widget; nothing loads while its key is empty.
+  support_app_widget_key: string;
+  support_landing_widget_key: string;
+  support_widget_secret: string;
   smtp: SmtpSettings | null;
   oauth: OAuthSettings;
   billing: BillingSettings;
@@ -168,7 +172,7 @@ type Kind = "bool" | "int" | "string" | "text" | "signup" | "enum" | "list" | "s
 
 export type SettingDef = {
   key: EditableKey;
-  group: "Sign-up & accounts" | "Limits" | "Pro plan" | "Teams" | "Abuse protection" | "Traffic capture & retention" | "Branding" | "Imprint" | "Legal pages";
+  group: "Sign-up & accounts" | "Limits" | "Pro plan" | "Teams" | "Abuse protection" | "Traffic capture & retention" | "Support" | "Branding" | "Imprint" | "Legal pages";
   label: string;
   help: string;
   kind: Kind;
@@ -732,6 +736,30 @@ export const SETTING_DEFS: SettingDef[] = [
     help: "Shown in page titles and emails.",
     kind: "string",
     fallback: () => "TUNd",
+  },
+  {
+    key: "support_app_widget_key",
+    group: "Support",
+    label: "In-app widget key",
+    help: "Public key (pk_…) of the support widget for signed-in users. Empty = no widget in the dashboard.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "support_landing_widget_key",
+    group: "Support",
+    label: "Landing page widget key",
+    help: "Public key (pk_…) of the anonymous chat on the landing page. Empty = no widget there.",
+    kind: "string",
+    fallback: () => "",
+  },
+  {
+    key: "support_widget_secret",
+    group: "Support",
+    label: "Identity secret",
+    help: "Signs who is asking, so requests from the dashboard land on the right account; without it they arrive anonymously. Stored on the server and never shown again.",
+    kind: "secret",
+    fallback: () => "",
   },
 ];
 

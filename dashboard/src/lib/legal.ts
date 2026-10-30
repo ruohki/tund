@@ -184,6 +184,7 @@ async function defaultPrivacy(): Promise<string> {
       : `The operators of ${name} are responsible for your data (the controller under the GDPR).${contact ? ` Write to [${s.abuse_contact}](${contact}) with any question about your data.` : ""}`;
   const review = s.untrusted_custom_domains === "review";
   const turnstile = Boolean(s.turnstile_site_key && s.turnstile_secret_key);
+  const supportPages = [s.support_landing_widget_key ? "the landing page" : "", s.support_app_widget_key ? "the dashboard" : ""].filter(Boolean);
   const inactive = s.inactive_account_months > 0 && mail;
   const unconfirmed = s.unverified_account_days > 0 && verifying;
   const providerNames = providers.map((p) => PROVIDER_LABEL[p]).join(" or ");
@@ -197,6 +198,13 @@ async function defaultPrivacy(): Promise<string> {
       : "",
     turnstile
       ? `- **Cloudflare Turnstile** checks the sign-up, password reset and abuse report forms. It loads from Cloudflare, which receives your IP address and information about your browser.`
+      : "",
+    supportPages.length
+      ? `- **Support chat** (support.till.md) is offered on ${supportPages.join(" and ")}. It loads from support.till.md, which receives your IP address and information about your browser. When you write to support, it also receives what you enter (your message, attachments${s.support_landing_widget_key ? ", and on the landing page your name and email address" : ""}) and the address, title and referrer of the page you're on, your language, time zone and screen size.${
+          s.support_app_widget_key
+            ? ` While you're signed in, it receives your email address, name and account id, your plan, whether you're an administrator or trusted and have confirmed your email address, and when your account was created, so support knows who is asking. A request from the dashboard also carries how many tunnels you have online, your static hostnames, custom domains and teams, and the version and operating system of your last client.`
+            : ""
+        }`
       : "",
     s.safe_browsing_api_key
       ? `- **Google Safe Browsing**: the addresses of online tunnels of accounts that aren't trusted${review ? ", and of custom domains under review," : ""} are sent to Google to check them against its list of dangerous sites.`
@@ -273,7 +281,7 @@ ${name} uses no analytics, advertising or tracking. It only stores what signing 
 - a cookie that keeps you signed in to the dashboard, for 30 days after your last visit;
 - short-lived cookies while you sign in${providers.length ? ` (also with ${providerNames})` : ""}, confirm or set up a second factor or use a passkey, and while visitors sign in to a protected tunnel: at most 15 minutes;
 - on tunnel hostnames, the 7-day cookie of a protected tunnel${s.browser_warning ? ", and a 7-day cookie that remembers a visitor saw the warning page before a tunnel" : ""};
-- your choice of light or dark theme, and of the language of code examples, in your browser's local storage.
+- your choice of light or dark theme, and of the language of code examples, in your browser's local storage${supportPages.length ? `;\n- a token for your support conversation, in your browser's local storage for support.till.md${s.support_app_widget_key ? ", which signing out of the dashboard removes" : ""}` : ""}.
 
 ## Your rights
 

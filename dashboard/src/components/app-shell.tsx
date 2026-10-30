@@ -2,11 +2,13 @@ import type { User } from "@/lib/auth";
 import { Sidebar } from "./sidebar";
 import { LiveProvider } from "./live";
 import { VerifyBanner } from "./verify-banner";
+import { SupportWidget } from "./support-widget";
 import { verificationRequired } from "@/lib/mail";
 import { siteInfo } from "@/lib/seo";
 import { billingEnabled, isPro } from "@/lib/plans";
 import { imprintReady } from "@/lib/legal";
 import { getSettings } from "@/lib/settings";
+import { appSupportWidget } from "@/lib/support";
 
 /** Sidebar, live stream and page frame for signed-in pages. */
 export async function AppShell({ user, children }: { user: User; children: React.ReactNode }) {
@@ -17,6 +19,7 @@ export async function AppShell({ user, children }: { user: User; children: React
     isPro(user.id),
     getSettings(),
   ]);
+  const support = await appSupportWidget(user, pro, settings);
   return (
     <LiveProvider>
       <Sidebar
@@ -31,6 +34,7 @@ export async function AppShell({ user, children }: { user: User; children: React
           {children}
         </main>
       </div>
+      {support ? <SupportWidget {...support} /> : null}
     </LiveProvider>
   );
 }

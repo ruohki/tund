@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { DESCRIPTION, siteInfo } from "@/lib/seo";
 import { Wordmark } from "../brand";
 import { buttonClass, StatusCode } from "../ui";
+import { SupportWidget } from "../support-widget";
 import { ThemeToggle } from "../theme-toggle";
 import { LandingInstall } from "./install";
 
@@ -336,6 +337,7 @@ export async function Landing() {
           <ThemeToggle />
         </div>
       </footer>
+      {settings.support_landing_widget_key ? <SupportWidget widgetKey={settings.support_landing_widget_key} /> : null}
     </div>
   );
 }
